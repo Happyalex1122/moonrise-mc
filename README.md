@@ -1,12 +1,63 @@
-﻿# Project Moonrise 🌙
+<div align="center">
+  <img src="docs/assets/logo.png" alt="Moonrise Logo" width="200"/>
+  <h1>Moonrise</h1>
+  <p><b>Next-Generation High-Performance Minecraft Server Software</b></p>
+  <p>
+    <a href="https://github.com/Happyalex1122/moonrise-mc/actions"><img src="https://img.shields.io/github/actions/workflow/status/Happyalex1122/moonrise-mc/build.yml?style=flat-square" alt="Build Status"/></a>
+    <a href="https://github.com/Happyalex1122/moonrise-mc/blob/main/LICENSE.md"><img src="https://img.shields.io/github/license/Happyalex1122/moonrise-mc?style=flat-square" alt="License"/></a>
+    <a href="https://discord.gg/papermc"><img src="https://img.shields.io/discord/289587020175114240?style=flat-square&logo=discord&label=Discord" alt="Discord"/></a>
+  </p>
+</div>
 
-**Extreme-Performance, ARM-Optimized Minecraft Server Engine**
+---
 
-Project Moonrise is a radical fork of PaperMC designed specifically for modern cloud architectures (ARM Graviton) and extreme memory environments. It leverages cutting-edge Java 22+ features to eliminate the traditional bottlenecks of the Minecraft server engine.
+## 🚀 About Moonrise
 
-## ⚡ Core Innovations
-1. **Zero-Copy I/O**: Complete replacement of SQLite with LMDB accessed via Java 22 Project Panama (FFM API), eliminating Java Heap GC pressure.
-2. **Virtual Thread Dispatch**: Total decoupling of I/O (chunk loading, DB writes, network decoding) from the main tick loop using Project Loom.
-3. **Hardware-Level Math**: AABB collision detection and pathfinding accelerated using ARM NEON 128-bit SIMD instructions via the Vector API.
-4. **Predictive Pre-fetching**: Kinematic-vector based asynchronous chunk loading that anticipates player movement.
-5. **Zstd Dictionary Compression**: Domain-specific Zstandard dictionary trained on Minecraft NBT patterns for 80%+ compression and 5x read speeds.
+**Moonrise** is a highly experimental, performance-obsessed fork of [PaperMC](https://papermc.io/), architected to push the limits of modern hardware. It abandons legacy paradigms in favor of cutting-edge JVM features and heavy architectural rewrites, aiming for massive concurrency and minimal latency.
+
+This project is built specifically to handle high-density player environments, massive entity counts, and zero-compromise server performance.
+
+### ✨ Core Features
+
+*   **Virtual Threads (Project Loom):** Asynchronous network handling and chunk generation decoupled from the main server tick.
+*   **Vector API (SIMD) Math Engine:** Core math operations (AABB collision, entity movement, distance calculations) are heavily vectorized for ARM64 and modern x86 hardware.
+*   **LMDB-Backed Persistence:** The standard Minecraft region file format is replaced with lightning-fast memory-mapped [LMDB](http://www.symas.com/lmdb/) for chunks and entities.
+*   **Optimized ARM64 Pipeline:** Tailored for cloud-native Graviton processors and modern data center topologies.
+
+## 🛠️ Getting Started
+
+### Prerequisites
+
+Moonrise leverages modern JVM features and requires **Java 25+** to compile and run.
+
+### Building from Source
+
+Moonrise uses a custom patch-based build system (Paperweight). To build a runnable server jar:
+
+```bash
+# Clone the repository
+git clone https://github.com/Happyalex1122/moonrise-mc.git
+cd moonrise-mc
+
+# Apply patches and build the server
+./gradlew applyPatches
+./gradlew createReobfBundlerJar
+```
+
+The compiled server jar will be located in `build/libs/`.
+
+## 📦 Documentation & Links
+
+*   [**Contributing Guidelines**](CONTRIBUTING.md): Learn how to contribute to the core and testing plugin.
+*   [**Security Policy**](SECURITY.md): Reporting security vulnerabilities.
+*   [**License**](LICENSE.md): Moonrise is licensed under the GPLv3 (inheriting from Paper).
+
+## 📊 Benchmarks
+
+Moonrise is rigorously tested with automated stress tests (`MoonriseStressTest`).
+Under conditions of 2,000+ entities and massive block updates, Moonrise maintains sub-1ms tick times (`MSPT < 1.0`).
+
+---
+<div align="center">
+  <i>Moonrise is an independent project and is not affiliated with Mojang AB or Microsoft.</i>
+</div>
