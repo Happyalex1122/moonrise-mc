@@ -5,20 +5,18 @@ import org.bukkit.World;
 import org.bukkit.WorldCreator;
 
 import java.io.File;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
+import net.minecraft.server.storage.LmdbBindings;
 
 public class MoonriseWorldManager {
     private static MoonriseWorldManager instance;
-    private final File dbFile;
-    private Connection connection;
+    private LmdbBindings.Env env;
+    private int worldsDbi;
+    private int linksDbi;
+    private boolean initialized = false;
 
     private MoonriseWorldManager() {
-        this.dbFile = new File("worlds.db");
         initDatabase();
     }
 
@@ -31,34 +29,40 @@ public class MoonriseWorldManager {
 
     private void initDatabase() {
         try {
-            Class.forName("org.sqlite.JDBC");
-            connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-            try (Statement stmt = connection.createStatement()) {
-                stmt.execute("CREATE TABLE IF NOT EXISTS worlds (" +
-                        "name TEXT PRIMARY KEY, " +
-                        "env TEXT NOT NULL)");
-                stmt.execute("CREATE TABLE IF NOT EXISTS links (" +
-                        "source TEXT, " +
-                        "target TEXT, " +
-                        "env TEXT, " +
-                        "PRIMARY KEY (source, target, env))");
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+            // 64MB environment size, maxDbs = 2
+            env = new LmdbBindings.Env("worlds.lmdb", 67108864L, 2);
+            worldsDbi = env.openDbi("worlds", LmdbBindings.MDB_CREATE);
+            linksDbi = env.openDbi("links", LmdbBindings.MDB_CREATE);
+            initialized = true;
+        } catch (Throwable t) {
+            System.err.println("Failed to initialize LMDB for MoonriseWorldManager:");
+            t.printStackTrace();
         }
+
+        // Shutdown Hook
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (env != null) {
+                try {
+                    env.close();
+                    System.out.println("MoonriseWorldManager LMDB Environment closed successfully.");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }, "MoonriseWorldManager-ShutdownHook"));
     }
 
     public void loadAllWorlds() {
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT name, env FROM worlds")) {
-            while (rs.next()) {
-                String name = rs.getString("name");
-                String envStr = rs.getString("env");
-                World.Environment env = World.Environment.valueOf(envStr);
-                loadWorldInternal(name, env);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
+        if (!initialized) return;
+        try (LmdbBindings.Txn txn = env.beginTxn(true)) {
+            txn.forEach(worldsDbi, (keyBytes, valBytes) -> {
+                String name = new String(keyBytes, StandardCharsets.UTF_8);
+                String envStr = new String(valBytes, StandardCharsets.UTF_8);
+                World.Environment envVal = World.Environment.valueOf(envStr);
+                loadWorldInternal(name, envVal);
+            });
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
     }
 
@@ -66,54 +70,68 @@ public class MoonriseWorldManager {
         Bukkit.getServer().createWorld(new WorldCreator(name).environment(env));
     }
 
-    public void createWorld(String name, World.Environment env) {
-        try (PreparedStatement pstmt = connection.prepareStatement("INSERT OR REPLACE INTO worlds (name, env) VALUES (?, ?)")) {
-            pstmt.setString(1, name);
-            pstmt.setString(2, env.name());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
+    public void createWorld(String name, World.Environment envVal) {
+        if (initialized) {
+            try (LmdbBindings.Txn txn = env.beginTxn(false)) {
+                byte[] key = name.getBytes(StandardCharsets.UTF_8);
+                byte[] val = envVal.name().getBytes(StandardCharsets.UTF_8);
+                txn.put(worldsDbi, key, val, 0);
+                txn.commit();
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
         }
-        loadWorldInternal(name, env);
+        loadWorldInternal(name, envVal);
     }
 
     public void loadWorld(String name) {
-        try (PreparedStatement pstmt = connection.prepareStatement("SELECT env FROM worlds WHERE name = ?")) {
-            pstmt.setString(1, name);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    String envStr = rs.getString("env");
-                    World.Environment env = World.Environment.valueOf(envStr);
-                    loadWorldInternal(name, env);
+        if (initialized) {
+            try (LmdbBindings.Txn txn = env.beginTxn(true)) {
+                byte[] key = name.getBytes(StandardCharsets.UTF_8);
+                byte[] valBytes = txn.get(worldsDbi, key);
+                if (valBytes != null) {
+                    String envStr = new String(valBytes, StandardCharsets.UTF_8);
+                    World.Environment envVal = World.Environment.valueOf(envStr);
+                    loadWorldInternal(name, envVal);
                 }
+            } catch (Throwable t) {
+                t.printStackTrace();
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
         }
     }
 
-    public void linkWorld(String source, String target, World.Environment env) {
-        try (PreparedStatement pstmt = connection.prepareStatement("INSERT OR REPLACE INTO links (source, target, env) VALUES (?, ?, ?)")) {
-            pstmt.setString(1, source);
-            pstmt.setString(2, target);
-            pstmt.setString(3, env.name());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
+    private byte[] serializeLinkKey(String source, World.Environment env) {
+        byte[] srcBytes = source.getBytes(StandardCharsets.UTF_8);
+        ByteBuffer buf = ByteBuffer.allocate(2 + srcBytes.length + 1);
+        buf.putShort((short) srcBytes.length);
+        buf.put(srcBytes);
+        buf.put((byte) env.ordinal());
+        return buf.array();
+    }
+
+    public void linkWorld(String source, String target, World.Environment envVal) {
+        if (initialized) {
+            try (LmdbBindings.Txn txn = env.beginTxn(false)) {
+                byte[] key = serializeLinkKey(source, envVal);
+                byte[] val = target.getBytes(StandardCharsets.UTF_8);
+                txn.put(linksDbi, key, val, 0);
+                txn.commit();
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
         }
     }
 
-    public String getLinkedWorld(String source, World.Environment env) {
-        try (PreparedStatement pstmt = connection.prepareStatement("SELECT target FROM links WHERE source = ? AND env = ?")) {
-            pstmt.setString(1, source);
-            pstmt.setString(2, env.name());
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getString("target");
-                }
+    public String getLinkedWorld(String source, World.Environment envVal) {
+        if (!initialized) return null;
+        try (LmdbBindings.Txn txn = env.beginTxn(true)) {
+            byte[] key = serializeLinkKey(source, envVal);
+            byte[] valBytes = txn.get(linksDbi, key);
+            if (valBytes != null) {
+                return new String(valBytes, StandardCharsets.UTF_8);
             }
-        } catch (SQLException e) {
-            e.printStackTrace();
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
         return null;
     }

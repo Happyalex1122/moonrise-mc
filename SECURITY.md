@@ -2,13 +2,16 @@
 
 ## Supported Versions
 
-We generally only fully support the latest version, the same applies to exploits such as server crashes and item
-duplication bugs. In the transition period during larger Minecraft updates, we may still backport important fixes to the
-last minor or major release.
+Currently, Moonrise is an experimental fork of Paper. We do not provide long-term support for older versions. Only the latest stable branch receives security updates.
+
+| Version | Supported          |
+| ------- | ------------------ |
+| 1.21.x  | :white_check_mark: |
+| < 1.21  | :x:                |
 
 ## Reporting a Vulnerability
 
-For any issues that are NOT duplication bugs, server/client crashes, or otherwise serious exploits, please open an issue
-through the [Issues tab](https://github.com/PaperMC/Paper/issues).
-For exploits, please [join our Discord](https://discord.gg/papermc) and see the [#paper-exploit-report channel](https://discord.com/channels/289587909051416579/1208749386348101682) for
-further instructions.
+If you discover a security vulnerability within Moonrise, please do not create a public issue. 
+Instead, please email the development team or report it directly to the repository maintainer privately.
+
+We take security issues seriously and will respond as quickly as possible to evaluate and address the issue.

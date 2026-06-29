@@ -1,29 +1,36 @@
 package net.minecraft.server.config;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.nio.charset.StandardCharsets;
+import net.minecraft.server.storage.LmdbBindings;
 
 public class DBConfigProvider {
-    private static final String DB_URL = "jdbc:sqlite:server_config.db";
+    private static LmdbBindings.Env env;
+    private static int dbi;
+    private static boolean initialized = false;
 
     static {
-        try (Connection conn = DriverManager.getConnection(DB_URL);
-             Statement stmt = conn.createStatement()) {
-            stmt.execute("""
-                CREATE TABLE IF NOT EXISTS config (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                )
-                """);
-        } catch (SQLException e) {
-            System.err.println("Failed to initialize database: " + e.getMessage());
-            e.printStackTrace();
+        try {
+            // 64MB environment size, maxDbs = 2
+            env = new LmdbBindings.Env("server_config.lmdb", 67108864L, 2);
+            dbi = env.openDbi("config", LmdbBindings.MDB_CREATE);
+            initialized = true;
+        } catch (Throwable t) {
+            System.err.println("Failed to initialize LMDB for DBConfigProvider:");
+            t.printStackTrace();
         }
-        
+
+        // Register shutdown hook to close environment
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (env != null) {
+                try {
+                    env.close();
+                    System.out.println("DBConfigProvider LMDB Environment closed successfully.");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }, "DBConfigProvider-ShutdownHook"));
+
         try {
             MoonriseConfig.init();
         } catch (Exception e) {
@@ -32,28 +39,36 @@ public class DBConfigProvider {
     }
 
     public static String getProperty(String key, String defaultValue) {
-        try (Connection conn = DriverManager.getConnection(DB_URL)) {
-            // Check if key exists
-            try (PreparedStatement pstmt = conn.prepareStatement("SELECT value FROM config WHERE key = ?")) {
-                pstmt.setString(1, key);
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    if (rs.next()) {
-                        return rs.getString("value");
-                    }
+        if (!initialized) {
+            return defaultValue;
+        }
+        try {
+            byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+            
+            // Read-only transaction first
+            try (LmdbBindings.Txn txn = env.beginTxn(true)) {
+                byte[] valBytes = txn.get(dbi, keyBytes);
+                if (valBytes != null) {
+                    return new String(valBytes, StandardCharsets.UTF_8);
                 }
             }
 
-            // Insert default value if key doesn't exist
+            // Key not found, insert default value
             String insertValue = defaultValue != null ? defaultValue : "";
-            try (PreparedStatement pstmt = conn.prepareStatement("INSERT INTO config (key, value) VALUES (?, ?)")) {
-                pstmt.setString(1, key);
-                pstmt.setString(2, insertValue);
-                pstmt.executeUpdate();
+            byte[] valBytes = insertValue.getBytes(StandardCharsets.UTF_8);
+            try (LmdbBindings.Txn txn = env.beginTxn(false)) {
+                // Double check if key was inserted by another thread meanwhile
+                byte[] existing = txn.get(dbi, keyBytes);
+                if (existing != null) {
+                    return new String(existing, StandardCharsets.UTF_8);
+                }
+                txn.put(dbi, keyBytes, valBytes, 0);
+                txn.commit();
             }
             return defaultValue;
-        } catch (SQLException e) {
-            System.err.println("Failed to read/write property from database: " + key);
-            e.printStackTrace();
+        } catch (Throwable t) {
+            System.err.println("Failed to read/write property from LMDB: " + key);
+            t.printStackTrace();
             return defaultValue;
         }
     }

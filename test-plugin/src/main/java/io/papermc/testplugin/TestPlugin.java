@@ -18,5 +18,8 @@ public final class TestPlugin extends JavaPlugin implements Listener {
             this.getLogger().info("runE2ETests=true detected. Scheduling E2ETests run one tick later...");
             this.getServer().getScheduler().runTaskLater(this, io.papermc.testplugin.e2e.E2ETestEngine::run, 1L);
         }
+
+        // Run the Moonrise stress test 10 seconds (200 ticks) after boot
+        this.getServer().getScheduler().runTaskLater(this, () -> MoonriseStressTest.runStressTest(this), 200L);
     }
 }

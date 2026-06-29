@@ -1,6 +1,0 @@
-adaptive-tps:
-  panic-threshold: 10.0
-  recovery-threshold: 15.0
-storage:
-  use-linear-format: true
-  use-async-entity-db: true
