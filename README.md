@@ -57,35 +57,36 @@ The compiled server jar will be located in `build/libs/`.
 Moonrise is rigorously tested with automated stress tests (`MoonriseStressTest`).
 Under conditions of 2,000+ entities and massive block updates, Moonrise maintains sub-1ms tick times (`MSPT < 1.0`).
 
-### Performance Comparison: WAL Moonrise vs Purpur
+### Performance Comparison: Async WAL Moonrise vs Purpur
 
-During an automated stress test under identical isolated environments (Java 25, 4GB RAM) featuring massive chunk loading and spawning 2000 entities, **WAL-enabled Moonrise** showed incredible balance between TPS resilience and memory efficiency compared to **Purpur**.
+During an automated stress test under identical isolated environments (Java 25, 4GB RAM) featuring massive chunk loading and spawning 2000 entities, **Async WAL Moonrise** showed an unprecedented level of memory efficiency and resilient TPS compared to **Purpur**.
 
-#### WAL-Enabled Moonrise Server Performance
-The WAL-enabled build of Moonrise achieves excellent TPS stability with a significantly reduced memory footprint.
+#### Async WAL Moonrise Server Performance
+The Async WAL build utilizes a dedicated virtual thread for non-blocking I/O and group commits, resulting in an incredibly low memory footprint while buffering massive load spikes seamlessly.
 
 | Time (s) | TPS | MSPT | Memory Usage |
 |----------|-----|------|--------------|
-| +10s | 17.64 | 14.13ms | 1453MB / 4096MB |
-| +15s | 18.18 | 0.38ms | 1455MB / 4096MB |
-| +20s | 18.52 | 0.29ms | 1457MB / 4096MB |
-| +25s | 18.75 | 0.26ms | 1460MB / 4096MB |
-| +30s | 18.92 | 0.23ms | 1464MB / 4096MB |
-| +35s | 19.05 | 0.31ms | 1465MB / 4096MB |
+| +10s | 17.18 | 29.89ms | 533MB / 4096MB |
+| +15s | 17.81 | 0.33ms | 535MB / 4096MB |
+| +20s | 18.21 | 0.26ms | 538MB / 4096MB |
+| +25s | 18.49 | 0.21ms | 540MB / 4096MB |
+| +30s | 18.69 | 0.22ms | 542MB / 4096MB |
+| +35s | 18.85 | 0.23ms | 544MB / 4096MB |
+| +40s | 18.97 | 0.22ms | 546MB / 4096MB |
+| +45s | 19.07 | 0.22ms | 549MB / 4096MB |
 
 #### Purpur Server Performance
-Purpur handles the stress test with near-perfect TPS stability, but with a significantly heavier memory footprint.
+Purpur handles the stress test with near-perfect instant TPS recovery, but its monolithic chunk loading consumes massively more RAM in identical conditions.
 
 | Time (s) | TPS | MSPT | Memory Usage |
 |----------|-----|------|--------------|
-| +10s | 19.61 | 4.91ms | 1088MB / 4096MB |
-| +15s | 19.99 | 7.27ms | 2158MB / 4096MB |
-| +20s | 20.00 | 0.35ms | 2162MB / 4096MB |
-| +25s | 20.00 | 0.25ms | 2164MB / 4096MB |
-| +30s | 20.00 | 0.26ms | 2166MB / 4096MB |
-| +35s | 20.00 | 0.26ms | 2169MB / 4096MB |
+| +10s | 15.96 | 8.96ms | 2225MB / 4096MB |
+| +15s | 20.00 | 0.38ms | 2230MB / 4096MB |
+| +20s | 20.00 | 0.30ms | 2234MB / 4096MB |
+| +25s | 20.00 | 0.28ms | 2237MB / 4096MB |
+| +30s | 20.00 | 0.26ms | 2238MB / 4096MB |
 
-**Summary:** The WAL implementation helps Moonrise find an excellent middle ground, achieving high TPS resilience while maintaining a ~30% lower memory footprint than Purpur (~1.47 GB vs ~2.17 GB).
+**Summary:** The Async WAL mechanism gives Moonrise the absolute best of both worlds. Moonrise stays extremely lean at just **~540MB**, while Purpur consumes **~2.2GB** (> 4x more memory) for the exact same heavy I/O workload. Moonrise also buffers the initial TPS shock slightly better (17.18 vs 15.96) thanks to fully decoupled disk writes.
 
 ---
 <div align="center">

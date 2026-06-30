@@ -40,6 +40,9 @@ public class AsyncEntityDB {
     private static final Object WAL_LOCK = new Object();
     private static DataOutputStream walStream;
 
+    private static final java.util.concurrent.BlockingQueue<SaveTask> WAL_QUEUE = new java.util.concurrent.LinkedBlockingQueue<>();
+    private static final Thread WAL_WORKER;
+
     static {
         // Replay any existing WALs before starting
         replayWAL(new File("entities_wal_flushing.dat"));
@@ -62,10 +65,42 @@ public class AsyncEntityDB {
             t.printStackTrace();
         }
 
+        // Initialize WAL Appender Virtual Thread (Group Commit)
+        WAL_WORKER = Thread.ofVirtual().unstarted(() -> {
+            while (running || !WAL_QUEUE.isEmpty()) {
+                try {
+                    SaveTask task = WAL_QUEUE.poll(10, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    if (task != null) {
+                        synchronized (WAL_LOCK) {
+                            if (walStream != null) {
+                                walStream.writeLong(task.uuid().getMostSignificantBits());
+                                walStream.writeLong(task.uuid().getLeastSignificantBits());
+                                walStream.writeInt(task.chunkX());
+                                walStream.writeInt(task.chunkZ());
+                                NbtIo.write(task.nbt(), walStream);
+                                
+                                // Group commit: flush only if queue is empty to maximize throughput
+                                if (WAL_QUEUE.isEmpty()) {
+                                    walStream.flush();
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    if (running) e.printStackTrace();
+                }
+            }
+        });
+        WAL_WORKER.setName("AsyncEntityDB-WAL-Worker");
+        WAL_WORKER.setDaemon(true);
+        WAL_WORKER.start();
+
         // Add Graceful Shutdown Hook
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             running = false;
-            System.out.println("AsyncEntityDB Shutdown Hook: Flushing dirty entities...");
+            System.out.println("AsyncEntityDB Shutdown Hook: Waiting for WAL to finish...");
+            try { WAL_WORKER.join(5000); } catch (InterruptedException ignored) {}
+            System.out.println("AsyncEntityDB Shutdown Hook: Flushing dirty entities to LMDB...");
             flush();
             if (env != null) {
                 try {
@@ -134,20 +169,8 @@ public class AsyncEntityDB {
         CACHE.put(uuid, record); // RAM cache updated immediately
         DIRTY_SET.add(uuid);     // Mark as dirty
         
-        synchronized (WAL_LOCK) {
-            if (walStream != null) {
-                try {
-                    walStream.writeLong(uuid.getMostSignificantBits());
-                    walStream.writeLong(uuid.getLeastSignificantBits());
-                    walStream.writeInt(chunkX);
-                    walStream.writeInt(chunkZ);
-                    NbtIo.write(nbt, walStream);
-                    walStream.flush(); // Ensure it reaches OS disk buffer immediately
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
+        // Non-blocking asynchronous WAL append
+        WAL_QUEUE.offer(new SaveTask(uuid, chunkX, chunkZ, nbt));
     }
 
     public static void flush() {
