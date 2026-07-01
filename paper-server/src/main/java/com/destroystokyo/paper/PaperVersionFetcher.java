@@ -40,8 +40,8 @@ public class PaperVersionFetcher implements VersionFetcher {
     private static final ComponentLogger COMPONENT_LOGGER = ComponentLogger.logger(LogManager.getRootLogger().getName());
     private static final int DISTANCE_ERROR = -1;
     private static final int DISTANCE_UNKNOWN = -2;
-    private static final String DOWNLOAD_PAGE = "https://papermc.io/downloads/paper";
-    private static final String REPOSITORY = "PaperMC/Paper";
+    private static final String DOWNLOAD_PAGE = "https://github.com/Happyalex1122/moonrise-mc/releases";
+    private static final String REPOSITORY = "Happyalex1122/moonrise-mc";
     private static final ServerBuildInfo BUILD_INFO = ServerBuildInfo.buildInfo();
     private static final String USER_AGENT = BUILD_INFO.brandName() + "/" + BUILD_INFO.asString(VERSION_SIMPLE) + " (https://papermc.io)";
     private static final Gson GSON = new Gson();
@@ -92,7 +92,7 @@ public class PaperVersionFetcher implements VersionFetcher {
                     COMPONENT_LOGGER.warn(text(DOWNLOAD_PAGE));
                     COMPONENT_LOGGER.warn(text("*************************************************************************************"));
                 });
-                case DISTANCE_UNKNOWN -> COMPONENT_LOGGER.warn(text("*** You are running an unknown version! Cannot fetch version info ***"));
+                case DISTANCE_UNKNOWN -> COMPONENT_LOGGER.info(text("*** You are running a development build; public version comparison is unavailable ***"));
                 default -> {
                     if (apiResult.isPresent()) {
                         COMPONENT_LOGGER.warn(text("*** You are running an outdated version of Minecraft, which is " + apiResult.get().distance() + " release(s) and " + distance + " build(s) behind!"));
@@ -123,7 +123,7 @@ public class PaperVersionFetcher implements VersionFetcher {
         return switch (distance) {
             case DISTANCE_ERROR -> text("Error obtaining version information", NamedTextColor.YELLOW);
             case 0 -> text("You are running the latest version", NamedTextColor.GREEN);
-            case DISTANCE_UNKNOWN -> text("Unknown version", NamedTextColor.YELLOW);
+            case DISTANCE_UNKNOWN -> text("Development build", NamedTextColor.YELLOW);
             default -> text("You are " + distance + " version(s) behind", NamedTextColor.YELLOW)
                 .append(Component.newline())
                 .append(text("Download the new version at: ")

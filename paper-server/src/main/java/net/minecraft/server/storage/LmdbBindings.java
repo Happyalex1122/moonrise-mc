@@ -15,6 +15,7 @@ public class LmdbBindings {
     private static final Arena LIBRARY_ARENA;
     private static final Linker LINKER;
     private static SymbolLookup LOOKUP;
+    private static boolean AVAILABLE;
 
     private static MethodHandle mdb_env_create;
     private static MethodHandle mdb_env_set_mapsize;
@@ -58,6 +59,7 @@ public class LmdbBindings {
             } catch (Exception ignore) {}
         }
         LOOKUP = lookup;
+        AVAILABLE = false;
 
         if (LOOKUP != null) {
             try {
@@ -93,13 +95,16 @@ public class LmdbBindings {
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
                 mdb_cursor_close = LINKER.downcallHandle(LOOKUP.find("mdb_cursor_close").orElseThrow(),
                         FunctionDescriptor.ofVoid(ValueLayout.ADDRESS));
+                AVAILABLE = true;
             } catch (Throwable t) {
-                System.err.println("Failed to bind LMDB symbols:");
-                t.printStackTrace();
+                LOOKUP = null;
+                AVAILABLE = false;
             }
-        } else {
-            System.err.println("LMDB library symbol lookup failed.");
         }
+    }
+
+    public static boolean isAvailable() {
+        return AVAILABLE;
     }
 
     public static void checkRc(int rc) {
