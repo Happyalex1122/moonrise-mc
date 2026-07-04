@@ -24,7 +24,10 @@ jobs:
       uses: gradle/actions/setup-gradle@v3
 
     - name: Apply Patches
-      run: ./gradlew applyPatches
+      run: |
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
+        ./gradlew applyPatches
 
     - name: Build Paperclip
       run: ./gradlew createPaperclipJar
