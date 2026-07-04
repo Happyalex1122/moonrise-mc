@@ -1,0 +1,153 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Happyalex1122 <happyalex1122@gmail.com>
+Date: Sat, 4 Jul 2026 19:55:29 +0900
+Subject: [PATCH] Optimize: Implement Dynamic Tick Throttling (Time-Budgeting)
+
+
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 229ff740e0418a05d824a67401ae6f105b4c3642..7360540d67e11e3df3090cf9e30f277c7705c9fe 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -191,6 +191,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     private static final Logger LOGGER = LogUtils.getLogger();
+     private static final int EMPTY_TIME_NO_TICK = 300;
+     private static final int MAX_SCHEDULED_TICKS_PER_TICK = 65536;
++    private static final long THROTTLE_THRESHOLD_NS = 45_000_000L;
+     private final List<ServerPlayer> players = Lists.newArrayList();
+     public final ServerChunkCache chunkSource;
+     private final MinecraftServer server;
+@@ -781,6 +782,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+     }
+ 
+     public void tick(final BooleanSupplier haveTime) {
++        long tickStartTime = System.nanoTime();
+         ProfilerFiller profiler = Profiler.get();
+         this.handlingTick = true;
+         TickRateManager tickRateManager = this.tickRateManager();
+@@ -866,6 +868,8 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+             }
+ 
+             io.papermc.paper.entity.activation.ActivationRange.activateEntities(this); // Paper - EAR
++            int[] count = {0};
++            long[] lastTime = {tickStartTime};
+             this.entityTickList
+                 .forEach(
+                     entity -> {
+@@ -884,6 +888,17 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+                                         entity.stopRiding();
+                                     }
+ 
++                                    if (count[0]++ % 20 == 0) {
++                                        lastTime[0] = System.nanoTime();
++                                    }
++                                    if (lastTime[0] - tickStartTime > THROTTLE_THRESHOLD_NS) {
++                                        if (!(entity instanceof net.minecraft.world.entity.player.Player) &&
++                                            !(entity instanceof net.minecraft.world.entity.projectile.Projectile) &&
++                                            !(entity instanceof net.minecraft.world.entity.item.ItemEntity)) {
++                                            return;
++                                        }
++                                    }
++
+                                     profiler.push("tick");
+                                     this.guardEntityTick(this::tickNonPassenger, entity);
+                                     profiler.pop();
+diff --git a/net/minecraft/world/level/chunk/storage/RegionFileStorage.java b/net/minecraft/world/level/chunk/storage/RegionFileStorage.java
+index e47a91b1869801258d0db20c126722fb06522c80..b1c3417d5c336897a7a2b8d848eb69dcc786d1ea 100644
+--- a/net/minecraft/world/level/chunk/storage/RegionFileStorage.java
++++ b/net/minecraft/world/level/chunk/storage/RegionFileStorage.java
+@@ -26,6 +26,7 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+ 
+     // Paper start - recalculate region file headers
+     private final boolean isChunkData;
++    private net.minecraft.server.storage.HybridChunkStorage hybridStorage;
+ 
+     @Nullable
+     public static ChunkPos getRegionFileCoordinates(Path file) {
+@@ -86,6 +87,7 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+ 
+     @Override
+     public final boolean moonrise$doesRegionFileNotExistNoIO(final int chunkX, final int chunkZ) {
++        if (this.hybridStorage != null) return false; // We can't guarantee without IO in hybrid
+         return !this.doesRegionFilePossiblyExist(ChunkPos.pack(chunkX >> REGION_SHIFT, chunkZ >> REGION_SHIFT));
+     }
+ 
+@@ -135,6 +137,14 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+     public final ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.WriteData moonrise$startWrite(
+         final int chunkX, final int chunkZ, final CompoundTag compound
+     ) throws IOException {
++        if (this.hybridStorage != null) {
++            this.hybridStorage.writeChunk(new ChunkPos(chunkX, chunkZ), compound);
++            return new ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.WriteData(
++                compound, ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.WriteData.WriteResult.DELETE,
++                null, null
++            );
++        }
++
+         if (compound == null) {
+             return new ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.WriteData(
+                 compound, ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.WriteData.WriteResult.DELETE,
+@@ -192,6 +202,19 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+     public final ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.ReadData moonrise$readData(
+         final int chunkX, final int chunkZ
+     ) throws IOException {
++        if (this.hybridStorage != null) {
++            CompoundTag tag = this.hybridStorage.readChunk(new ChunkPos(chunkX, chunkZ));
++            if (tag == null) {
++                return new ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.ReadData(
++                    ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.ReadData.ReadResult.NO_DATA, null, null, 0
++                );
++            } else {
++                return new ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.ReadData(
++                    ca.spottedleaf.moonrise.patches.chunk_system.io.MoonriseRegionFileIO.RegionDataController.ReadData.ReadResult.SYNC_READ, null, tag, 0
++                );
++            }
++        }
++
+         final RegionFile regionFile = this.moonrise$getRegionFileIfExists(chunkX, chunkZ);
+ 
+         final DataInputStream input = regionFile == null ? null : regionFile.getChunkDataInputStream(new ChunkPos(chunkX, chunkZ));
+@@ -271,6 +294,13 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+         this.sync = sync;
+         this.info = info;
+         this.isChunkData = info.dfuType()[0] == net.minecraft.util.datafix.DataFixTypes.CHUNK; // Paper - recalculate region file headers
++        if (this.isChunkData && net.minecraft.server.config.MoonriseConfig.enableLinearFormat) {
++            try {
++                this.hybridStorage = new net.minecraft.server.storage.HybridChunkStorage(folder.getParent().toFile());
++            } catch (Throwable t) {
++                LOGGER.error("Failed to initialize HybridChunkStorage", t);
++            }
++        }
+     }
+ 
+     @org.jetbrains.annotations.Contract("_, false -> !null") private @Nullable RegionFile getRegionFile(final ChunkPos pos, boolean existingOnly) throws IOException { // CraftBukkit
+@@ -345,6 +375,9 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+     // Paper end
+ 
+     public @Nullable CompoundTag read(final ChunkPos pos) throws IOException {
++        if (this.hybridStorage != null) {
++            return this.hybridStorage.readChunk(pos);
++        }
+         // CraftBukkit start - SPIGOT-5680: There's no good reason to preemptively create files on read, save that for writing
+         RegionFile region = this.getRegionFile(pos, true);
+         if (region == null) {
+@@ -397,6 +430,10 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+     }
+ 
+     public void write(final ChunkPos pos, final @Nullable CompoundTag value) throws IOException { // Paper - rewrite chunk system - public
++        if (this.hybridStorage != null) {
++            this.hybridStorage.writeChunk(pos, value);
++            return;
++        }
+         if (!SharedConstants.DEBUG_DONT_SAVE_WORLD) {
+             RegionFile region = this.getRegionFile(pos, value == null); // CraftBukkit // Paper - rewrite chunk system
+             // Paper start - rewrite chunk system
+@@ -427,6 +464,9 @@ public class RegionFileStorage implements AutoCloseable, ca.spottedleaf.moonrise
+ 
+     @Override
+     public void close() throws IOException {
++        if (this.hybridStorage != null) {
++            this.hybridStorage.close();
++        }
+         // Paper start - rewrite chunk system
+         synchronized (this) {
+             final ExceptionCollector<IOException> exceptionCollector = new ExceptionCollector<>();
