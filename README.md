@@ -11,20 +11,20 @@
 
 ---
 
-## ?? About Moonrise
+## üöÄ About Moonrise
 
 **Moonrise** is a highly experimental, performance-obsessed fork of [PaperMC](https://papermc.io/), architected to push the limits of modern hardware. It abandons legacy paradigms in favor of cutting-edge JVM features and heavy architectural rewrites, aiming for massive concurrency and minimal latency.
 
 This project is built specifically to handle high-density player environments, massive entity counts, and zero-compromise server performance.
 
-### ??Core Features
+### ‚ú® Core Features
 
 *   **Virtual Threads (Project Loom):** Asynchronous network handling and chunk generation decoupled from the main server tick.
 *   **Vector API (SIMD) Math Engine:** Core math operations (AABB collision, entity movement, distance calculations) are heavily vectorized for ARM64 and modern x86 hardware.
 *   **LMDB-Backed Persistence:** The standard Minecraft region file format is replaced with lightning-fast memory-mapped [LMDB](http://www.symas.com/lmdb/) for chunks and entities.
 *   **Optimized ARM64 Pipeline:** Tailored for cloud-native Graviton processors and modern data center topologies.
 
-## ?õ†Ô∏?Getting Started
+## üõ†Ô∏è Getting Started
 
 ### Prerequisites
 
@@ -46,13 +46,13 @@ cd moonrise-mc
 
 The compiled server jar will be located in `build/libs/`.
 
-## ?ì¶ Documentation & Links
+## üì¶ Documentation & Links
 
 *   [**Contributing Guidelines**](CONTRIBUTING.md): Learn how to contribute to the core and testing plugin.
 *   [**Security Policy**](SECURITY.md): Reporting security vulnerabilities.
 *   [**License**](LICENSE): Moonrise is licensed under the GPLv3 (inheriting from Paper).
 
-## ?ìä Benchmarks
+## üìä Benchmarks
 
 Moonrise is rigorously tested with automated stress tests (`MoonriseStressTest`).
 Under conditions of 2,000+ entities and massive block updates, Moonrise maintains sub-1ms tick times (`MSPT < 1.0`).
