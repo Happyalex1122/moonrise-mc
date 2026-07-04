@@ -58,6 +58,13 @@ public class LmdbBindings {
                 lookup = SymbolLookup.loaderLookup();
             } catch (Exception ignore) {}
         }
+        if (lookup == null || lookup.find("mdb_env_create").isEmpty()) {
+            downloadAndLoadNatives();
+            try {
+                lookup = SymbolLookup.loaderLookup();
+            } catch (Exception ignore) {}
+        }
+
         LOOKUP = lookup;
         AVAILABLE = false;
 
@@ -105,6 +112,69 @@ public class LmdbBindings {
 
     public static boolean isAvailable() {
         return AVAILABLE;
+    }
+
+    private static void downloadAndLoadNatives() {
+        String os = System.getProperty("os.name").toLowerCase();
+        String arch = System.getProperty("os.arch").toLowerCase();
+
+        String platform;
+        String extension;
+        if (os.contains("win")) {
+            platform = "windows";
+            extension = ".dll";
+        } else if (os.contains("mac")) {
+            platform = "osx";
+            extension = ".dylib";
+        } else {
+            platform = "linux";
+            extension = ".so";
+        }
+
+        String archName = (arch.contains("aarch64") || arch.contains("arm")) ? "aarch64" : "x86_64";
+        String artifactId = "lmdbjava-native-" + platform + "-" + archName;
+        String version = "0.9.29-1";
+        String jarUrl = "https://repo1.maven.org/maven2/org/lmdbjava/" + artifactId + "/" + version + "/" + artifactId + "-" + version + ".jar";
+
+        java.io.File nativesDir = new java.io.File(".moonrise/natives");
+        nativesDir.mkdirs();
+        java.io.File outFile = new java.io.File(nativesDir, "lmdb" + extension);
+
+        if (!outFile.exists()) {
+            System.out.println("[Moonrise] Downloading LMDB native library for " + platform + "-" + archName + "...");
+            try {
+                java.net.URL url = new java.net.URI(jarUrl).toURL();
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestProperty("User-Agent", "Moonrise/1.0");
+                try (java.io.InputStream in = conn.getInputStream();
+                     java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(in)) {
+                    
+                    java.util.zip.ZipEntry entry;
+                    boolean found = false;
+                    while ((entry = zis.getNextEntry()) != null) {
+                        if (entry.getName().endsWith(extension)) {
+                            java.nio.file.Files.copy(zis, outFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        System.err.println("[Moonrise] Could not find native library in downloaded JAR!");
+                        return;
+                    }
+                }
+                System.out.println("[Moonrise] Successfully downloaded LMDB native library to " + outFile.getAbsolutePath());
+            } catch (Exception e) {
+                System.err.println("[Moonrise] Failed to download LMDB native library: " + e.getMessage());
+                return;
+            }
+        }
+
+        try {
+            System.load(outFile.getAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("[Moonrise] Failed to load downloaded LMDB library: " + e.getMessage());
+        }
     }
 
     public static void checkRc(int rc) {

@@ -7,7 +7,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 public class HybridChunkStorage {
 
@@ -17,6 +16,7 @@ public class HybridChunkStorage {
     private final boolean lmdbAvailable;
     private final Set<ChunkPos> dirtyChunks = ConcurrentHashMap.newKeySet();
     private final Set<Long> loadedRegions = ConcurrentHashMap.newKeySet();
+    private final Map<Long, LinearChunkRegion> linearRegionCache = new ConcurrentHashMap<>();
     private volatile boolean running = true;
     private final Thread backgroundFlusher;
 
@@ -29,6 +29,7 @@ public class HybridChunkStorage {
         } else {
             this.hotCache = null;
             this.lmdbAvailable = false;
+            System.err.println("[HybridChunkStorage] LMDB natives not available. Falling back to 100% Linear storage.");
         }
 
         if (this.lmdbAvailable) {
@@ -62,15 +63,17 @@ public class HybridChunkStorage {
         }
 
         // Load the entire region from Linear to LMDB
-        LinearChunkRegion linearRegion = new LinearChunkRegion(regionDir, regionX, regionZ);
-        linearRegion.loadAll();
-        
-        Map<Integer, CompoundTag> allChunks = linearRegion.getAllChunks();
-        for (Map.Entry<Integer, CompoundTag> entry : allChunks.entrySet()) {
-            int localX = entry.getKey() & 31;
-            int localZ = entry.getKey() / 32;
-            ChunkPos p = new ChunkPos((regionX << 5) + localX, (regionZ << 5) + localZ);
-            hotCache.writeChunk(p, entry.getValue());
+        LinearChunkRegion linearRegion = getLinearRegion(regionX, regionZ);
+        synchronized (linearRegion) {
+            linearRegion.loadAll();
+            
+            Map<Integer, CompoundTag> allChunks = linearRegion.getAllChunks();
+            for (Map.Entry<Integer, CompoundTag> entry : allChunks.entrySet()) {
+                int localX = entry.getKey() & 31;
+                int localZ = entry.getKey() / 32;
+                ChunkPos p = new ChunkPos((regionX << 5) + localX, (regionZ << 5) + localZ);
+                hotCache.writeChunk(p, entry.getValue());
+            }
         }
         
         loadedRegions.add(regionKey);
@@ -91,6 +94,16 @@ public class HybridChunkStorage {
         } else {
             hotCache.writeChunk(pos, data);
         }
+        dirtyChunks.add(pos);
+    }
+
+    public void deleteChunk(ChunkPos pos) throws IOException {
+        if (!this.lmdbAvailable) {
+            writeLinearChunk(pos, null);
+            return;
+        }
+        
+        hotCache.deleteChunk(pos);
         dirtyChunks.add(pos);
     }
 
@@ -132,20 +145,22 @@ public class HybridChunkStorage {
             int regionX = ChunkPos.getX(entry.getKey());
             int regionZ = ChunkPos.getZ(entry.getKey());
             
-            LinearChunkRegion linearRegion = new LinearChunkRegion(regionDir, regionX, regionZ);
-            linearRegion.loadAll(); // Load existing non-dirty chunks
+            LinearChunkRegion linearRegion = getLinearRegion(regionX, regionZ);
+            synchronized (linearRegion) {
+                linearRegion.loadAll(); // Load existing non-dirty chunks
 
-            for (ChunkPos pos : entry.getValue()) {
-                CompoundTag tag = hotCache.readChunk(pos);
-                if (tag == null) {
-                    linearRegion.deleteChunk(pos.x(), pos.z());
-                } else {
-                    linearRegion.putChunk(pos.x(), pos.z(), tag);
+                for (ChunkPos pos : entry.getValue()) {
+                    CompoundTag tag = hotCache.readChunk(pos);
+                    if (tag == null) {
+                        linearRegion.deleteChunk(pos.x() & 31, pos.z() & 31);
+                    } else {
+                        linearRegion.putChunk(pos.x() & 31, pos.z() & 31, tag);
+                    }
                 }
-            }
 
-            // Save the compressed region
-            linearRegion.saveAll();
+                // Save the compressed region
+                linearRegion.saveAll();
+            }
         }
     }
 
@@ -174,24 +189,33 @@ public class HybridChunkStorage {
         int regionX = pos.x() >> 5;
         int regionZ = pos.z() >> 5;
 
-        LinearChunkRegion linearRegion = new LinearChunkRegion(regionDir, regionX, regionZ);
-        linearRegion.loadAll();
-        return linearRegion.getChunk(pos.x() & 31, pos.z() & 31);
+        LinearChunkRegion linearRegion = getLinearRegion(regionX, regionZ);
+        synchronized (linearRegion) {
+            linearRegion.loadAll();
+            return linearRegion.getChunk(pos.x() & 31, pos.z() & 31);
+        }
     }
 
     private void writeLinearChunk(ChunkPos pos, CompoundTag data) throws IOException {
         int regionX = pos.x() >> 5;
         int regionZ = pos.z() >> 5;
 
-        LinearChunkRegion linearRegion = new LinearChunkRegion(regionDir, regionX, regionZ);
-        linearRegion.loadAll();
+        LinearChunkRegion linearRegion = getLinearRegion(regionX, regionZ);
+        synchronized (linearRegion) {
+            linearRegion.loadAll();
 
-        if (data == null) {
-            linearRegion.deleteChunk(pos.x() & 31, pos.z() & 31);
-        } else {
-            linearRegion.putChunk(pos.x() & 31, pos.z() & 31, data);
+            if (data == null) {
+                linearRegion.deleteChunk(pos.x() & 31, pos.z() & 31);
+            } else {
+                linearRegion.putChunk(pos.x() & 31, pos.z() & 31, data);
+            }
+
+            linearRegion.saveAll();
         }
+    }
 
-        linearRegion.saveAll();
+    private LinearChunkRegion getLinearRegion(int regionX, int regionZ) {
+        long key = ChunkPos.pack(regionX, regionZ);
+        return linearRegionCache.computeIfAbsent(key, k -> new LinearChunkRegion(regionDir, regionX, regionZ));
     }
 }
