@@ -4,7 +4,7 @@
   <p><b>Next-Generation High-Performance Minecraft Server Software</b></p>
   <p>
     <a href="https://github.com/Happyalex1122/moonrise-mc/actions"><img src="https://img.shields.io/github/actions/workflow/status/Happyalex1122/moonrise-mc/build.yml?style=flat-square" alt="Build Status"/></a>
-    <a href="https://github.com/Happyalex1122/moonrise-mc/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Happyalex1122/moonrise-mc?style=flat-square" alt="License"/></a>
+    <a href="https://github.com/Happyalex1122/moonrise-mc/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Happyalex1122/moonrise-mc?style=flat-square&v=2" alt="License"/></a>
     <a href="https://discord.gg/papermc"><img src="https://img.shields.io/discord/289587020175114240?style=flat-square&logo=discord&label=Discord" alt="Discord"/></a>
   </p>
 </div>
