@@ -14,6 +14,7 @@ public class MoonriseConfig {
     public static double adaptiveRecoveryTps = 15.0;
     public static boolean enableLinearFormat = true;
     public static boolean enableAsyncEntityDB = true;
+    public static long worldMigrationDelay = 30000L;
 
     public static void init() {
         configFile = new File("moonrise.yml");
@@ -27,12 +28,14 @@ public class MoonriseConfig {
         adaptiveRecoveryTps = config.getDouble("adaptive-tps.recovery-threshold", 15.0);
         enableLinearFormat = config.getBoolean("storage.use-linear-format", true);
         enableAsyncEntityDB = config.getBoolean("storage.use-async-entity-db", true);
+        worldMigrationDelay = config.getLong("world-migration.delay", 30000L);
 
         // Save defaults if the file doesn't exist or is missing keys
         config.set("adaptive-tps.panic-threshold", adaptivePanicTps);
         config.set("adaptive-tps.recovery-threshold", adaptiveRecoveryTps);
         config.set("storage.use-linear-format", enableLinearFormat);
         config.set("storage.use-async-entity-db", enableAsyncEntityDB);
+        config.set("world-migration.delay", worldMigrationDelay);
 
         try {
             config.save(configFile);
