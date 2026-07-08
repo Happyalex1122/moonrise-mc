@@ -1,0 +1,98 @@
+--- /dev/null
++++ b/ca/spottedleaf/moonrise/common/list/BatchedRcuEntityList.java
+@@ -1,0 +_,95 @@
++package ca.spottedleaf.moonrise.common.list;
++
++import java.lang.invoke.MethodHandles;
++import java.lang.invoke.VarHandle;
++import java.util.Arrays;
++import java.util.Queue;
++import java.util.concurrent.ConcurrentLinkedQueue;
++import java.util.function.Consumer;
++import net.minecraft.world.entity.Entity;
++
++public class BatchedRcuEntityList {
++    private volatile Entity[] elements = new Entity[0];
++    private static final VarHandle ELEMENTS_HANDLE;
++
++    static {
++        try {
++            ELEMENTS_HANDLE = MethodHandles.lookup().findVarHandle(BatchedRcuEntityList.class, "elements", Entity[].class);
++        } catch (ReflectiveOperationException e) {
++            throw new ExceptionInInitializerError(e);
++        }
++    }
++
++    private final Queue<Entity> addQueue = new ConcurrentLinkedQueue<>();
++    private final Queue<Entity> removeQueue = new ConcurrentLinkedQueue<>();
++
++    public void add(Entity e) {
++        if (e == null) return;
++        addQueue.offer(e);
++    }
++
++    public void remove(Entity e) {
++        if (e == null) return;
++        removeQueue.offer(e);
++    }
++
++    public boolean contains(Entity e) {
++        if (e == null) return false;
++        if (addQueue.contains(e)) return true;
++        if (removeQueue.contains(e)) return false;
++
++        Entity[] current = (Entity[]) ELEMENTS_HANDLE.getAcquire(this);
++        for (Entity o : current) {
++            if (o == e) return true;
++        }
++        return false;
++    }
++
++    public void forEachAcquire(Consumer<? super Entity> action) {
++        // We flush queues before ticking.
++        commitChanges();
++
++        Entity[] snapshot = (Entity[]) ELEMENTS_HANDLE.getAcquire(this);
++        for (Entity e : snapshot) {
++            if (e != null && !e.isRemoved()) {
++                action.accept(e);
++            }
++        }
++    }
++
++    public synchronized void commitChanges() {
++        if (addQueue.isEmpty() && removeQueue.isEmpty()) return;
++
++        Entity[] current = (Entity[]) ELEMENTS_HANDLE.getAcquire(this);
++
++        int newSize = current.length + addQueue.size();
++        Entity[] next = new Entity[newSize];
++
++        int idx = 0;
++        for (Entity e : current) {
++            if (e != null && !e.isRemoved() && !removeQueue.contains(e)) {
++                next[idx++] = e;
++            }
++        }
++
++        Entity toAdd;
++        while ((toAdd = addQueue.poll()) != null) {
++            // Avoid duplicates
++            boolean exists = false;
++            for (int i = 0; i < idx; i++) {
++                if (next[i] == toAdd) {
++                    exists = true;
++                    break;
++                }
++            }
++            if (!exists && !toAdd.isRemoved()) {
++                next[idx++] = toAdd;
++            }
++        }
++
++        next = Arrays.copyOf(next, idx);
++
++        ELEMENTS_HANDLE.setRelease(this, next);
++        removeQueue.clear();
++    }
++}
