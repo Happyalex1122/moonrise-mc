@@ -1,0 +1,28 @@
+--- /dev/null
++++ b/ca/spottedleaf/moonrise/math/VectorMathUtils.java
+@@ -1,0 +_,25 @@
++package ca.spottedleaf.moonrise.math;
++
++import jdk.incubator.vector.FloatVector;
++import jdk.incubator.vector.VectorSpecies;
++
++public class VectorMathUtils {
++
++    private static final VectorSpecies<Float> SPECIES = FloatVector.SPECIES_256;
++
++    public static void fastMultiply(float[] a, float[] b, float[] result) {
++        int i = 0;
++        int upperBound = SPECIES.loopBound(a.length);
++        
++        for (; i < upperBound; i += SPECIES.length()) {
++            FloatVector va = FloatVector.fromArray(SPECIES, a, i);
++            FloatVector vb = FloatVector.fromArray(SPECIES, b, i);
++            FloatVector vc = va.mul(vb);
++            vc.intoArray(result, i);
++        }
++        
++        for (; i < a.length; i++) {
++            result[i] = a[i] * b[i];
++        }
++    }
++}
