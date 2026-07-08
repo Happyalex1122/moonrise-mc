@@ -70,15 +70,29 @@ public final class WorldFolderMigration {
         LOGGER.warn("World storage migration is required during startup.");
         LOGGER.warn("If you do not have a backup: interrupt the server now. Use Ctrl+C, your panel kill function, etc.");
         LOGGER.warn("=====================================================");
-        LOGGER.warn("Continuing in 30 seconds...");
-        if (DISABLE_MIGRATION_DELAY) {
-            LOGGER.warn("Migration delay disabled by system property.");
+        long delayMillis = net.minecraft.server.config.MoonriseConfig.worldMigrationDelay;
+        LOGGER.warn("Continuing in " + (delayMillis / 1000) + " seconds (or press Enter in console to skip)...");
+        if (DISABLE_MIGRATION_DELAY || delayMillis <= 0) {
+            LOGGER.warn("Migration delay disabled by system property or configuration.");
         } else {
             try {
-                Thread.sleep(30_000L);
+                long waitEndTime = System.currentTimeMillis() + delayMillis;
+                while (System.currentTimeMillis() < waitEndTime) {
+                    if (System.in.available() > 0) {
+                        // Consume the input
+                        while (System.in.available() > 0) {
+                            System.in.read();
+                        }
+                        LOGGER.warn("Migration delay skipped by user input.");
+                        break;
+                    }
+                    Thread.sleep(100L);
+                }
             } catch (final InterruptedException ex) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException("Interrupted while waiting before startup world migration", ex);
+            } catch (final IOException ex) {
+                LOGGER.error("Failed to read console input during migration delay", ex);
             }
         }
         LOGGER.info("Continuing with startup world migration.");
