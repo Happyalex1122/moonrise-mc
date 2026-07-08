@@ -22,15 +22,6 @@
              this.add(this.buildChatPanel(), "Center");
              this.add(this.buildInfoPanel(), "West");
          } catch (Exception e) {
-@@ -87,7 +_,7 @@
- 
-     private JComponent buildInfoPanel() {
-         JPanel panel = new JPanel(new BorderLayout());
--        StatsComponent comp = new StatsComponent(this.server);
-+        com.destroystokyo.paper.gui.GuiStatsComponent comp = new com.destroystokyo.paper.gui.GuiStatsComponent(this.server); // Paper - Make GUI graph fancier
-         this.finalizers.add(comp::close);
-         panel.add(comp, "North");
-         panel.add(this.buildPlayerPanel(), "Center");
 @@ -150,6 +_,7 @@
          this.finalizers.forEach(Runnable::run);
      }
