@@ -41,14 +41,14 @@ print(f"Using Java binary: {JAVA_BIN}")
 
 # JVM Flags for Java 25, Panama FFM, Vector API, and classloader opening
 JVM_FLAGS = [
-    "-Xms2G",
-    "-Xmx2G",
+    "-Xms1G",
+    "-Xmx1G",
     "-XX:+UnlockDiagnosticVMOptions",
     "-XX:+UnlockExperimentalVMOptions",
     "--add-modules", "jdk.incubator.vector",
     "--enable-native-access=ALL-UNNAMED",
     "--add-opens", "java.base/java.net=ALL-UNNAMED",
-    "-DrunE2ETests=true",  # Trigger test-plugin's auto-run sequence
+    "-DrunE2ETests=false",  # Disable E2E tests so the server stays alive for stress metrics
 ]
 
 def run_command(args, cwd=None):
@@ -96,6 +96,7 @@ def setup_server_directory():
 
     # Locate and copy built jars
     paperclip_patterns = [
+        os.path.join("paper-server", "build", "libs", "moonrise-*.jar"),
         os.path.join("paper-server", "build", "libs", "paper-paperclip-*.jar"),
         os.path.join("paper-server", "build", "libs", "paper-*.jar"),
         os.path.join("paper-server", "build", "libs", "paperclip-*.jar"),
@@ -181,6 +182,7 @@ def run_session(session_num):
     tests_passed = 0
     tests_failed = 0
     failed_details = []
+    stress_metrics_seen = 0
     
     timeout_seconds = 180  # 3 minutes timeout limit per session
     start_time = time.time()
@@ -200,8 +202,11 @@ def run_session(session_num):
                 continue
 
             # Print output line to standard out for visibility
-            sys.stdout.write(f"[SESSION {session_num}] " + line)
-            sys.stdout.flush()
+            try:
+                sys.stdout.write(f"[SESSION {session_num}] " + line)
+                sys.stdout.flush()
+            except UnicodeEncodeError:
+                pass
 
             # Parse test signatures
             if "[E2E-TEST] START:" in line:
@@ -215,15 +220,16 @@ def run_session(session_num):
                 print(f"\n=== E2E Test Session {session_num} Finished ===")
                 print(line.strip())
                 tests_completed = True
-                
-                # Command server to stop gracefully
-                print("Sending '/stop' command to server...")
-                try:
-                    process.stdin.write(b"stop\n")
-                    process.stdin.flush()
-                except Exception as e:
-                    print(f"Warning: Could not write stop command: {e}")
-                server_stopped_gracefully = True
+            elif "[STRESS METRICS]" in line:
+                stress_metrics_seen += 1
+                if stress_metrics_seen >= 3:
+                    print("Gathered enough stress metrics. Sending '/stop' command to server...")
+                    try:
+                        process.stdin.write(b"stop\n")
+                        process.stdin.flush()
+                    except Exception as e:
+                        print(f"Warning: Could not write stop command: {e}")
+                    server_stopped_gracefully = True
 
     except KeyboardInterrupt:
         print(f"\nAborting session {session_num}...")

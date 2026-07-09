@@ -41,7 +41,7 @@ public class E2ETestEngine {
         System.out.println("[E2E-TEST] ALL TESTS COMPLETE - PASS: " + passedCount + " FAIL: " + failedCount);
 
         // Gracefully shutdown the server
-        System.out.println("E2ETestEngine triggering Bukkit.shutdown()...");
-        Bukkit.shutdown();
+        System.out.println("E2ETestEngine finished tests. Waiting for stress metrics...");
+        // Bukkit.shutdown();
     }
 }

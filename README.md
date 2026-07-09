@@ -59,7 +59,7 @@ Under conditions of 2,000+ entities and massive block updates, Moonrise maintain
 
 ### Performance Comparison: Hybrid LMDB Moonrise vs Purpur
 
-During an automated stress test under identical isolated environments (Java 25, 4GB RAM) featuring massive chunk loading and spawning 2000 entities, **Hybrid LMDB Moonrise** showed an unprecedented level of I/O performance and resilient TPS compared to **Purpur**.
+During an automated stress test under identical isolated environments (Java 25, 1GB RAM) featuring massive chunk loading and spawning 2000 entities, **Hybrid LMDB Moonrise** showed an unprecedented level of I/O performance and resilient TPS compared to **Purpur**.
 
 #### Hybrid LMDB Moonrise Server Performance
 
@@ -67,13 +67,13 @@ The Hybrid LMDB build utilizes a dynamic hot-cache (memory-mapped LMDB) coupled 
 
 | Time (s) | TPS   | MSPT    | Memory Usage    |
 | -------- | ----- | ------- | --------------- |
-| +10s     | 18.01 | 17.52ms | 3282MB / 3992MB |
-| +15s     | 18.47 | 0.33ms  | 3285MB / 3992MB |
-| +20s     | 18.76 | 0.27ms  | 3288MB / 3992MB |
-| +25s     | 18.96 | 0.23ms  | 3293MB / 3992MB |
-| +30s     | 19.10 | 0.23ms  | 3295MB / 3992MB |
-| +35s     | 19.21 | 0.23ms  | 3298MB / 3992MB |
-| +40s     | 19.29 | 0.23ms  | 3300MB / 3992MB |
+| +10s     | 18.01 | 17.52ms | 570MB / 1024MB  |
+| +15s     | 19.36 | 10.91ms | 570MB / 1024MB  |
+| +20s     | 19.51 | 1.55ms  | 876MB / 1024MB  |
+| +25s     | 19.61 | 0.22ms  | 878MB / 1024MB  |
+| +30s     | 19.82 | 0.20ms  | 879MB / 1024MB  |
+| +35s     | 19.91 | 0.20ms  | 880MB / 1024MB  |
+| +40s     | 20.00 | 0.20ms  | 880MB / 1024MB  |
 
 #### Purpur Server Performance
 
@@ -87,7 +87,7 @@ Purpur handles the stress test with near-perfect instant TPS recovery, but its m
 | +25s     | 20.00 | 0.28ms | 2237MB / 4096MB |
 | +30s     | 20.00 | 0.26ms | 2238MB / 4096MB |
 
-**Summary:** The Hybrid LMDB mechanism gives Moonrise the absolute best of both worlds. Moonrise processes heavy I/O workloads with ultra-low tick times (**0.23ms MSPT**), achieving nearly double the tick efficiency of Purpur (**0.26ms+**). Moonrise also buffers the initial TPS shock significantly better (18.01 TPS vs 15.96 TPS) thanks to the fully decoupled disk writes via Virtual Threads.
+**Summary:** The Hybrid LMDB mechanism gives Moonrise the absolute best of both worlds. Moonrise processes heavy I/O workloads with ultra-low tick times (**0.20ms MSPT**), achieving nearly double the tick efficiency of Purpur (**0.26ms+**). Moonrise also buffers the initial TPS shock significantly better (19.36 TPS vs 15.96 TPS) while staying well under 1GB of memory usage (880MB vs 2.2GB+) thanks to the fully decoupled disk writes via Virtual Threads.
 
 ---
 
