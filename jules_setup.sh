@@ -22,16 +22,7 @@ echo "Bypassing DNS for Mojang..."
 echo "150.171.110.135 piston-data.mojang.com" | sudo tee -a /etc/hosts
 echo "150.171.110.135 launchermeta.mojang.com" | sudo tee -a /etc/hosts
 
-echo "Fetching latest changes from GitHub..."
-git pull
-
 echo "Applying Patches..."
 ./gradlew applyPatches
-
-echo "Building Paper..."
-./gradlew build
-
-echo "Creating Reobf Jar..."
-./gradlew createReobfPaperclipJar
 
 echo "Jules VM Setup Complete!"
