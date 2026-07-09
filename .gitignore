@@ -50,3 +50,12 @@ paper-generator.settings.gradle.kts
 
 # Don't track patched vanilla submodules
 paper-server/src/minecraft/
+
+# Local Test Runs
+purpur_test_run/
+test_server_run/
+
+# Local Binaries and Assets
+*.dll
+*.jar
+badge.svg
