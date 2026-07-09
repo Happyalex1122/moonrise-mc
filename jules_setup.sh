@@ -18,6 +18,10 @@ export PATH=$JAVA_HOME/bin:$PATH
 echo "Using Java version:"
 java -version
 
+echo "Bypassing DNS for Mojang..."
+echo "150.171.110.135 piston-data.mojang.com" | sudo tee -a /etc/hosts
+echo "150.171.110.135 launchermeta.mojang.com" | sudo tee -a /etc/hosts
+
 echo "Fetching latest changes from GitHub..."
 git pull
 
