@@ -1,0 +1,165 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Happyalex1122 <happyalex1122@gmail.com>
+Date: Thu, 9 Jul 2026 15:43:24 +0900
+Subject: [PATCH] Fix RCU implementation
+
+
+diff --git a/ca/spottedleaf/moonrise/common/list/BatchedRcuEntityList.java b/ca/spottedleaf/moonrise/common/list/BatchedRcuEntityList.java
+index cccafe57f1c0e9b12ce9c2845588a8cd5321c038..184e3db00cbbf704e098820de5600933942f46d9 100644
+--- a/ca/spottedleaf/moonrise/common/list/BatchedRcuEntityList.java
++++ b/ca/spottedleaf/moonrise/common/list/BatchedRcuEntityList.java
+@@ -3,8 +3,8 @@ package ca.spottedleaf.moonrise.common.list;
+ import java.lang.invoke.MethodHandles;
+ import java.lang.invoke.VarHandle;
+ import java.util.Arrays;
+-import java.util.Queue;
+-import java.util.concurrent.ConcurrentLinkedQueue;
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.function.Consumer;
+ import net.minecraft.world.entity.Entity;
+ 
+@@ -20,23 +20,23 @@ public class BatchedRcuEntityList {
+         }
+     }
+ 
+-    private final Queue<Entity> addQueue = new ConcurrentLinkedQueue<>();
+-    private final Queue<Entity> removeQueue = new ConcurrentLinkedQueue<>();
++    private final Set<Entity> addSet = ConcurrentHashMap.newKeySet();
++    private final Set<Entity> removeSet = ConcurrentHashMap.newKeySet();
+ 
+     public void add(Entity e) {
+         if (e == null) return;
+-        addQueue.offer(e);
++        addSet.add(e);
+     }
+ 
+     public void remove(Entity e) {
+         if (e == null) return;
+-        removeQueue.offer(e);
++        removeSet.add(e);
+     }
+ 
+     public boolean contains(Entity e) {
+         if (e == null) return false;
+-        if (addQueue.contains(e)) return true;
+-        if (removeQueue.contains(e)) return false;
++        if (addSet.contains(e)) return true;
++        if (removeSet.contains(e)) return false;
+ 
+         Entity[] current = (Entity[]) ELEMENTS_HANDLE.getAcquire(this);
+         for (Entity o : current) {
+@@ -46,9 +46,6 @@ public class BatchedRcuEntityList {
+     }
+ 
+     public void forEachAcquire(Consumer<? super Entity> action) {
+-        // We flush queues before ticking.
+-        commitChanges();
+-
+         Entity[] snapshot = (Entity[]) ELEMENTS_HANDLE.getAcquire(this);
+         for (Entity e : snapshot) {
+             if (e != null && !e.isRemoved()) {
+@@ -58,23 +55,21 @@ public class BatchedRcuEntityList {
+     }
+ 
+     public synchronized void commitChanges() {
+-        if (addQueue.isEmpty() && removeQueue.isEmpty()) return;
++        if (addSet.isEmpty() && removeSet.isEmpty()) return;
+ 
+         Entity[] current = (Entity[]) ELEMENTS_HANDLE.getAcquire(this);
+ 
+-        int newSize = current.length + addQueue.size();
++        int newSize = current.length + addSet.size();
+         Entity[] next = new Entity[newSize];
+ 
+         int idx = 0;
+         for (Entity e : current) {
+-            if (e != null && !e.isRemoved() && !removeQueue.contains(e)) {
++            if (e != null && !e.isRemoved() && !removeSet.contains(e)) {
+                 next[idx++] = e;
+             }
+         }
+ 
+-        Entity toAdd;
+-        while ((toAdd = addQueue.poll()) != null) {
+-            // Avoid duplicates
++        for (Entity toAdd : addSet) {
+             boolean exists = false;
+             for (int i = 0; i < idx; i++) {
+                 if (next[i] == toAdd) {
+@@ -90,6 +85,7 @@ public class BatchedRcuEntityList {
+         next = Arrays.copyOf(next, idx);
+ 
+         ELEMENTS_HANDLE.setRelease(this, next);
+-        removeQueue.clear();
++        addSet.clear();
++        removeSet.clear();
+     }
+ }
+\ No newline at end of file
+diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
+index 7360540d67e11e3df3090cf9e30f277c7705c9fe..7193167010bf7076881bab7d721cfebaf5666d63 100644
+--- a/net/minecraft/server/level/ServerLevel.java
++++ b/net/minecraft/server/level/ServerLevel.java
+@@ -870,6 +870,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
+             io.papermc.paper.entity.activation.ActivationRange.activateEntities(this); // Paper - EAR
+             int[] count = {0};
+             long[] lastTime = {tickStartTime};
++            this.entityTickList.commitChanges(); // Paper - optimize entity ticking with RCU
+             this.entityTickList
+                 .forEach(
+                     entity -> {
+diff --git a/net/minecraft/world/level/entity/EntityTickList.java b/net/minecraft/world/level/entity/EntityTickList.java
+index a30409eddfaded878a3ac54bb526fd2e4b887c57..919d09595f1e377fe630af216f16b61e1777e74b 100644
+--- a/net/minecraft/world/level/entity/EntityTickList.java
++++ b/net/minecraft/world/level/entity/EntityTickList.java
+@@ -9,7 +9,7 @@ import net.minecraft.world.entity.Entity;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class EntityTickList {
+-    private final ca.spottedleaf.moonrise.common.list.IteratorSafeOrderedReferenceSet<net.minecraft.world.entity.Entity> entities = new ca.spottedleaf.moonrise.common.list.IteratorSafeOrderedReferenceSet<>(); // Paper - rewrite chunk system
++    private final ca.spottedleaf.moonrise.common.list.BatchedRcuEntityList entities = new ca.spottedleaf.moonrise.common.list.BatchedRcuEntityList(); // Paper - optimize entity ticking with RCU
+ 
+     private void ensureActiveIsNotIterated() {
+         // Paper - rewrite chunk system
+@@ -17,30 +17,25 @@ public class EntityTickList {
+ 
+     public void add(final Entity entity) {
+         this.ensureActiveIsNotIterated();
+-        this.entities.add(entity); // Paper - rewrite chunk system
++        this.entities.add(entity); // Paper - optimize entity ticking with RCU
+     }
+ 
+     public void remove(final Entity entity) {
+         this.ensureActiveIsNotIterated();
+-        this.entities.remove(entity); // Paper - rewrite chunk system
++        this.entities.remove(entity); // Paper - optimize entity ticking with RCU
+     }
+ 
+     public boolean contains(final Entity entity) {
+-        return this.entities.contains(entity); // Paper - rewrite chunk system
++        return this.entities.contains(entity); // Paper - optimize entity ticking with RCU
+     }
+ 
+     public void forEach(final Consumer<Entity> output) {
+-        // Paper start - rewrite chunk system
+-        // To ensure nothing weird happens with dimension travelling, do not iterate over new entries...
+-        // (by dfl iterator() is configured to not iterate over new entries)
+-        final ca.spottedleaf.moonrise.common.list.IteratorSafeOrderedReferenceSet.Iterator<Entity> iterator = this.entities.iterator();
+-        try {
+-            while (iterator.hasNext()) {
+-                output.accept(iterator.next());
+-            }
+-        } finally {
+-            iterator.finishedIterating();
+-        }
+-        // Paper end - rewrite chunk system
++        // Paper start - optimize entity ticking with RCU
++        this.entities.forEachAcquire(output);
++        // Paper end - optimize entity ticking with RCU
++    }
++    
++    public void commitChanges() {
++        this.entities.commitChanges();
+     }
+ }
