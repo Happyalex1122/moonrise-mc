@@ -3,10 +3,14 @@ set -e
 
 echo "Setting up Paper-fork environment on Jules VM..."
 
-# Install OpenJDK 25 (Linux x64)
-wget https://download.java.net/java/early_access/jdk25/9/GPL/openjdk-25-ea+9_linux-x64_bin.tar.gz -O jdk25.tar.gz
-tar -xzf jdk25.tar.gz
-export JAVA_HOME=$(pwd)/jdk-25
+# Install SDKMAN and Java 25 (Linux x64)
+curl -s "https://get.sdkman.io" | bash
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+# Try Temurin first, fallback to OpenJDK if not found
+sdk install java 25-tem || sdk install java 25-open || true
+
+export JAVA_HOME="$HOME/.sdkman/candidates/java/current"
 export PATH=$JAVA_HOME/bin:$PATH
 
 echo "Using Java version:"
