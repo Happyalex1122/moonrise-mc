@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "google-labs-jules[bot]"
+ <161369871+google-labs-jules[bot]@users.noreply.github.com>
+Date: Sat, 11 Jul 2026 02:02:28 +0000
+Subject: [PATCH] Optimize pathfinder using object pooling
+
+
+diff --git a/net/minecraft/world/level/pathfinder/Node.java b/net/minecraft/world/level/pathfinder/Node.java
+index 1a8c2bb0e1aa0af684b0c68eff947e6392762ba9..c43c89b3b47d9672ade7298496e74bcbf16e2df3 100644
+--- a/net/minecraft/world/level/pathfinder/Node.java
++++ b/net/minecraft/world/level/pathfinder/Node.java
+@@ -7,10 +7,10 @@ import net.minecraft.world.phys.Vec3;
+ import org.jspecify.annotations.Nullable;
+ 
+ public class Node {
+-    public final int x;
+-    public final int y;
+-    public final int z;
+-    private final int hash;
++    public int x;
++    public int y;
++    public int z;
++    private int hash;
+     public int heapIdx = -1;
+     public float g;
+     public float h;
+@@ -21,6 +21,22 @@ public class Node {
+     public float costMalus;
+     public PathType type = PathType.BLOCKED;
+ 
++    public void reset(int x, int y, int z) {
++        this.x = x;
++        this.y = y;
++        this.z = z;
++        this.hash = createHash(x, y, z);
++        this.heapIdx = -1;
++        this.g = 0.0F;
++        this.h = 0.0F;
++        this.f = 0.0F;
++        this.cameFrom = null;
++        this.closed = false;
++        this.walkedDistance = 0.0F;
++        this.costMalus = 0.0F;
++        this.type = PathType.BLOCKED;
++    }
++
+     public Node(final int x, final int y, final int z) {
+         this.x = x;
+         this.y = y;
+diff --git a/net/minecraft/world/level/pathfinder/NodeEvaluator.java b/net/minecraft/world/level/pathfinder/NodeEvaluator.java
+index f4a30761483c4032b5942f84df7706b10976cb5d..f0517442eda88f38e3c768dfd24399e38e9257e4 100644
+--- a/net/minecraft/world/level/pathfinder/NodeEvaluator.java
++++ b/net/minecraft/world/level/pathfinder/NodeEvaluator.java
+@@ -15,6 +15,8 @@ public abstract class NodeEvaluator {
+     protected PathfindingContext currentContext;
+     protected Mob mob;
+     protected final Int2ObjectMap<Node> nodes = new Int2ObjectOpenHashMap<>();
++    private final Node[] nodePool = new Node[32768];
++    private int poolIndex = 0;
+     protected int entityWidth;
+     protected int entityHeight;
+     protected int entityDepth;
+@@ -27,6 +29,7 @@ public abstract class NodeEvaluator {
+         this.currentContext = new PathfindingContext(level, entity);
+         this.mob = entity;
+         this.nodes.clear();
++        this.poolIndex = 0;
+         this.entityWidth = Mth.floor(entity.getBbWidth() + 1.0F);
+         this.entityHeight = Mth.floor(entity.getBbHeight() + 1.0F);
+         this.entityDepth = Mth.floor(entity.getBbWidth() + 1.0F);
+@@ -42,7 +45,20 @@ public abstract class NodeEvaluator {
+     }
+ 
+     protected Node getNode(final int x, final int y, final int z) {
+-        return this.nodes.computeIfAbsent(Node.createHash(x, y, z), k -> new Node(x, y, z));
++        return this.nodes.computeIfAbsent(Node.createHash(x, y, z), k -> {
++            if (this.poolIndex < this.nodePool.length) {
++                Node node = this.nodePool[this.poolIndex];
++                if (node == null) {
++                    node = new Node(x, y, z);
++                    this.nodePool[this.poolIndex] = node;
++                } else {
++                    node.reset(x, y, z);
++                }
++                this.poolIndex++;
++                return node;
++            }
++            return new Node(x, y, z);
++        });
+     }
+ 
+     public abstract Node getStart();
