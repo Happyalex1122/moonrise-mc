@@ -1,0 +1,52 @@
+plugins {
+    id 'java'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+group = 'net.minecraft.server'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    maven { url 'https://repo.spongepowered.org/repository/maven-public/' }
+}
+
+dependencies {
+    // Compile against the extracted Paper server classes and libraries
+    implementation fileTree(dir: 'versions', include: ['**/*.jar'])
+    implementation fileTree(dir: 'libraries', include: ['**/*.jar'])
+    
+    // Javassist for runtime bytecode manipulation
+    implementation 'org.javassist:javassist:3.30.2-GA'
+    
+    // Cache and Mixin
+    implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+    compileOnly 'org.spongepowered:mixin:0.8.5'
+}
+
+jar {
+    manifest {
+        attributes(
+            'Main-Class': 'net.minecraft.server.region.SingleJarLauncher',
+            'Premain-Class': 'net.minecraft.server.region.RegionAgent',
+            'Can-Redefine-Classes': 'true',
+            'Can-Retransform-Classes': 'true'
+        )
+    }
+}
+
+import com.github.jengelman.gradle.plugins.shadow.transformers.Log4j2PluginsCacheFileTransformer
+
+shadowJar {
+    archiveClassifier.set('')
+    transform(Log4j2PluginsCacheFileTransformer)
+    manifest {
+        attributes(
+            'Main-Class': 'net.minecraft.server.region.SingleJarLauncher',
+            'Premain-Class': 'net.minecraft.server.region.RegionAgent',
+            'Can-Redefine-Classes': 'true',
+            'Can-Retransform-Classes': 'true',
+            'Multi-Release': 'true'
+        )
+    }
+}
