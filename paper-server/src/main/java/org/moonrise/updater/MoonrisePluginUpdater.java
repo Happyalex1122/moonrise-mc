@@ -54,6 +54,10 @@ public class MoonrisePluginUpdater {
                     return;
                 }
 
+                System.out.println("=======================================================");
+                System.out.println("[Moonrise] Plugin Auto-Updater is starting...");
+                System.out.println("=======================================================");
+
                 JsonObject requestBody = new JsonObject();
                 JsonArray hashesArray = new JsonArray();
                 for (String h : hashes) {
@@ -132,6 +136,8 @@ public class MoonrisePluginUpdater {
             } catch (Exception e) {
                 // Ignore exceptions to prevent crashing the server
                 System.err.println("[Moonrise] Async update check failed: " + e.getMessage());
+            } finally {
+                System.out.println("=======================================================");
             }
         }, "Moonrise-Plugin-Updater");
         
