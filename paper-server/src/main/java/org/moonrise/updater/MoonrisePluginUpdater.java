@@ -27,6 +27,10 @@ public class MoonrisePluginUpdater {
         if (!net.minecraft.server.config.MoonriseConfig.enableAutoPluginUpdater) {
             return;
         }
+
+        // Apply pending updates from previous boot before starting the check
+        applyPendingUpdates();
+
         Thread updaterThread = new Thread(() -> {
             try {
                 File pluginsDir = new File("plugins");
@@ -147,6 +151,8 @@ public class MoonrisePluginUpdater {
             System.out.println("[Moonrise] Waiting for plugin auto-updater to finish... (-Dmoonrise.updater.sync=true)");
             try {
                 updaterThread.join();
+                // If we waited synchronously, apply the updates immediately
+                applyPendingUpdates();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -200,6 +206,29 @@ public class MoonrisePluginUpdater {
         } catch (Exception e) {
             System.err.println(String.format(org.moonrise.updater.MoonriseLang.get("updater.failed"), filename, e.getMessage()));
             return false;
+        }
+    }
+
+    public static void applyPendingUpdates() {
+        File updateDir = new File("plugins/update");
+        if (!updateDir.exists() || !updateDir.isDirectory()) {
+            return;
+        }
+        File pluginsDir = new File("plugins");
+        File[] pending = updateDir.listFiles((dir, name) -> name.endsWith(".jar"));
+        if (pending == null || pending.length == 0) {
+            return;
+        }
+
+        for (File p : pending) {
+            File dest = new File(pluginsDir, p.getName());
+            try {
+                java.nio.file.Files.copy(p.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                p.delete();
+                System.out.println("[Moonrise] Applied pending update for: " + p.getName());
+            } catch (Exception e) {
+                System.err.println("[Moonrise] Failed to apply update for " + p.getName() + ": " + e.getMessage());
+            }
         }
     }
 }
