@@ -93,6 +93,7 @@ public class MoonrisePluginUpdater {
                         String responseString = new String(is.readAllBytes(), StandardCharsets.UTF_8);
                         JsonObject responseJson = GSON.fromJson(responseString, JsonObject.class);
 
+                        int updatedCount = 0;
                         for (Map.Entry<String, JsonElement> entry : responseJson.entrySet()) {
                             // entry.getKey() is the original hash
                             JsonObject versionObj = entry.getValue().getAsJsonObject();
@@ -111,8 +112,17 @@ public class MoonrisePluginUpdater {
                                 String downloadUrl = targetFileObj.get("url").getAsString();
                                 String filename = targetFileObj.get("filename").getAsString();
 
-                                downloadFile(downloadUrl, filename);
+                                boolean success = downloadFile(downloadUrl, filename);
+                                if (success) {
+                                    updatedCount++;
+                                }
                             }
+                        }
+                        
+                        if (updatedCount > 0) {
+                            System.out.println("\n[Moonrise] 플러그인 자동 업데이트 스캔 및 다운로드가 모두 완료되었습니다! (총 " + updatedCount + "개 플러그인 교체 대기 중)\n");
+                        } else {
+                            System.out.println("[Moonrise] 모든 대중 플러그인이 이미 최신 버전입니다. 스캔을 종료합니다.");
                         }
                     }
                 }
@@ -142,7 +152,7 @@ public class MoonrisePluginUpdater {
         }
     }
 
-    private static void downloadFile(String downloadUrl, String filename) {
+    private static boolean downloadFile(String downloadUrl, String filename) {
         try {
             File updateDir = new File("plugins/update");
             if (!updateDir.exists()) {
@@ -166,8 +176,10 @@ public class MoonrisePluginUpdater {
             }
             
             System.out.println("[Moonrise] " + filename + " 플러그인의 최신 버전을 다운로드 완료했습니다. 다음 서버 재시작 시 자동으로 교체됩니다.");
+            return true;
         } catch (Exception e) {
             System.err.println("[Moonrise] Failed to download update: " + filename + " - " + e.getMessage());
+            return false;
         }
     }
 }
