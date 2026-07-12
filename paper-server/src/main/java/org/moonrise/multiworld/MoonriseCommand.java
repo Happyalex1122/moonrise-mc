@@ -16,7 +16,7 @@ import java.util.List;
 public class MoonriseCommand extends Command {
 
     public MoonriseCommand() {
-        super("mv", "Moonrise multiworld command", "/mv <tp|create|list|setspawn>", Arrays.asList("mr"));
+        super("mv", "Moonrise multiworld command", "/mv <tp|create|list|setspawn|lang>", Arrays.asList("mr"));
         this.setPermission("moonrise.command.mv");
     }
 
@@ -28,7 +28,7 @@ public class MoonriseCommand extends Command {
         }
 
         if (args.length == 0) {
-            sender.sendMessage(ChatColor.RED + "Usage: /mv <tp|create|list|setspawn>");
+            sender.sendMessage(ChatColor.RED + "Usage: /mv <tp|create|list|setspawn|lang>");
             return true;
         }
 
@@ -97,6 +97,17 @@ public class MoonriseCommand extends Command {
                 sender.sendMessage(ChatColor.GREEN + "Spawn location set for world " + p.getWorld().getName() + ".");
                 break;
 
+            case "lang":
+                if (args.length < 2) {
+                    sender.sendMessage(ChatColor.RED + "Usage: /mv lang <ko|en|ja|...>");
+                    return true;
+                }
+                String targetLang = args[1].toLowerCase();
+                sender.sendMessage(ChatColor.YELLOW + "Fetching language file '" + targetLang + "' from GitHub...");
+                org.moonrise.updater.MoonriseLang.downloadAndSetLanguageAsync(targetLang);
+                sender.sendMessage(ChatColor.GREEN + "Started downloading. Check console for result.");
+                break;
+
             default:
                 sender.sendMessage(ChatColor.RED + "Unknown subcommand.");
                 break;
@@ -110,7 +121,7 @@ public class MoonriseCommand extends Command {
         List<String> completions = new ArrayList<>();
         if (args.length == 1) {
             String partial = args[0].toLowerCase();
-            for (String sub : Arrays.asList("tp", "create", "list", "setspawn")) {
+            for (String sub : Arrays.asList("tp", "create", "list", "setspawn", "lang")) {
                 if (sub.startsWith(partial)) {
                     completions.add(sub);
                 }

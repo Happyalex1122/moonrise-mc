@@ -120,17 +120,9 @@ public class MoonrisePluginUpdater {
                         }
                         
                         if (updatedCount > 0) {
-                            if ("en".equalsIgnoreCase(net.minecraft.server.config.MoonriseConfig.language)) {
-                                System.out.println("\n[Moonrise] Automatic plugin update scan and download complete! (Total " + updatedCount + " plugins waiting for replacement)\n");
-                            } else {
-                                System.out.println("\n[Moonrise] 플러그인 자동 업데이트 스캔 및 다운로드가 모두 완료되었습니다! (총 " + updatedCount + "개 플러그인 교체 대기 중)\n");
-                            }
+                            System.out.println(String.format(org.moonrise.updater.MoonriseLang.get("updater.success"), updatedCount));
                         } else {
-                            if ("en".equalsIgnoreCase(net.minecraft.server.config.MoonriseConfig.language)) {
-                                System.out.println("[Moonrise] All public plugins are already up to date. Scan finished.");
-                            } else {
-                                System.out.println("[Moonrise] 모든 대중 플러그인이 이미 최신 버전입니다. 스캔을 종료합니다.");
-                            }
+                            System.out.println(org.moonrise.updater.MoonriseLang.get("updater.no_updates"));
                         }
                     }
                 }
@@ -183,14 +175,10 @@ public class MoonrisePluginUpdater {
                 }
             }
             
-            if ("en".equalsIgnoreCase(net.minecraft.server.config.MoonriseConfig.language)) {
-                System.out.println("[Moonrise] " + filename + " latest version downloaded successfully. It will be applied on the next server restart.");
-            } else {
-                System.out.println("[Moonrise] " + filename + " 플러그인의 최신 버전을 다운로드 완료했습니다. 다음 서버 재시작 시 자동으로 교체됩니다.");
-            }
+            System.out.println(String.format(org.moonrise.updater.MoonriseLang.get("updater.downloaded"), filename));
             return true;
         } catch (Exception e) {
-            System.err.println("[Moonrise] Failed to download update: " + filename + " - " + e.getMessage());
+            System.err.println(String.format(org.moonrise.updater.MoonriseLang.get("updater.failed"), filename, e.getMessage()));
             return false;
         }
     }

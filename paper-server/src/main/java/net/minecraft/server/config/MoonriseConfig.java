@@ -53,4 +53,14 @@ public class MoonriseConfig {
         net.minecraft.server.region.AdaptiveTPSManager.setPanicTps(adaptivePanicTps);
         net.minecraft.server.region.AdaptiveTPSManager.setRecoveryTps(adaptiveRecoveryTps);
     }
+
+    public static void save() {
+        if (config == null || configFile == null) return;
+        config.set("language", language);
+        try {
+            config.save(configFile);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
