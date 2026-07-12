@@ -46,29 +46,73 @@ public class LmdbBindings {
         LIBRARY_ARENA = Arena.ofShared();
         LINKER = Linker.nativeLinker();
         SymbolLookup lookup = null;
-        String[] libNames = {"lmdb", "liblmdb"};
-        for (String name : libNames) {
+
+        // 1. Try manual property path
+        String manualPath = System.getProperty("lmdb.native.path");
+        if (manualPath != null) {
             try {
-                lookup = SymbolLookup.libraryLookup(name, LIBRARY_ARENA);
-                break;
-            } catch (Exception ignore) {}
+                System.load(manualPath);
+            } catch (Throwable t) {
+                System.err.println("[Moonrise] Failed to load manual LMDB library: " + t.getMessage());
+            }
         }
+
+        // 2. Try common Linux paths
+        if (manualPath == null) {
+            String[] commonPaths = {
+                "/usr/lib/aarch64-linux-gnu/liblmdb.so",
+                "/usr/lib/x86_64-linux-gnu/liblmdb.so",
+                "/usr/lib/liblmdb.so",
+                "/usr/lib64/liblmdb.so",
+                "/usr/local/lib/liblmdb.so"
+            };
+            for (String path : commonPaths) {
+                if (new java.io.File(path).exists()) {
+                    try {
+                        System.load(path);
+                        break;
+                    } catch (Throwable ignore) {}
+                }
+            }
+        }
+
+        // 3. See if we have symbols via loaderLookup (if System.load worked)
+        try {
+            SymbolLookup loaderLookup = SymbolLookup.loaderLookup();
+            if (loaderLookup.find("mdb_env_create").isPresent()) {
+                lookup = loaderLookup;
+            }
+        } catch (Throwable ignore) {}
+
+        // 4. Try libraryLookup for standard OS lookup
         if (lookup == null) {
-            try {
-                lookup = SymbolLookup.loaderLookup();
-            } catch (Exception ignore) {}
+            String[] libNames = {"lmdb", "liblmdb"};
+            for (String name : libNames) {
+                try {
+                    SymbolLookup temp = SymbolLookup.libraryLookup(name, LIBRARY_ARENA);
+                    if (temp.find("mdb_env_create").isPresent()) {
+                        lookup = temp;
+                        break;
+                    }
+                } catch (Throwable ignore) {}
+            }
         }
+
+        // 5. Fallback to download
         if (lookup == null || lookup.find("mdb_env_create").isEmpty()) {
             downloadAndLoadNatives();
             try {
-                lookup = SymbolLookup.loaderLookup();
-            } catch (Exception ignore) {}
+                SymbolLookup loaderLookup = SymbolLookup.loaderLookup();
+                if (loaderLookup.find("mdb_env_create").isPresent()) {
+                    lookup = loaderLookup;
+                }
+            } catch (Throwable ignore) {}
         }
 
         LOOKUP = lookup;
         AVAILABLE = false;
 
-        if (LOOKUP != null) {
+        if (LOOKUP != null && LOOKUP.find("mdb_env_create").isPresent()) {
             try {
                 mdb_env_create = LINKER.downcallHandle(LOOKUP.find("mdb_env_create").orElseThrow(),
                         FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
