@@ -1,0 +1,4 @@
+updater.success: "\n[Moonrise] Automatic plugin update scan and download complete! (Total %d plugins waiting for replacement)\n"
+updater.no_updates: "[Moonrise] All public plugins are already up to date. Scan finished."
+updater.downloaded: "[Moonrise] %s latest version downloaded successfully. It will be applied on the next server restart."
+updater.failed: "[Moonrise] Failed to download update: %s - %s"

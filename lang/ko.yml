@@ -1,0 +1,4 @@
+updater.success: "\n[Moonrise] 플러그인 자동 업데이트 스캔 및 다운로드가 모두 완료되었습니다! (총 %d개 플러그인 교체 대기 중)\n"
+updater.no_updates: "[Moonrise] 모든 대중 플러그인이 이미 최신 버전입니다. 스캔을 종료합니다."
+updater.downloaded: "[Moonrise] %s 플러그인의 최신 버전을 다운로드 완료했습니다. 다음 서버 재시작 시 자동으로 교체됩니다."
+updater.failed: "[Moonrise] 업데이트 다운로드 실패: %s - %s"
