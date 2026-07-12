@@ -16,6 +16,7 @@ public class MoonriseConfig {
     public static boolean enableAsyncEntityDB = true;
     public static long worldMigrationDelay = 30000L;
     public static boolean enableAutoPluginUpdater = false;
+    public static String language = "ko";
 
     public static void init() {
         configFile = new File("moonrise.yml");
@@ -31,6 +32,7 @@ public class MoonriseConfig {
         enableAsyncEntityDB = config.getBoolean("storage.use-async-entity-db", true);
         worldMigrationDelay = config.getLong("world-migration.delay", 30000L);
         enableAutoPluginUpdater = config.getBoolean("plugins.auto-updater-enabled", false);
+        language = config.getString("language", "ko");
 
         // Save defaults if the file doesn't exist or is missing keys
         config.set("adaptive-tps.panic-threshold", adaptivePanicTps);
@@ -39,6 +41,7 @@ public class MoonriseConfig {
         config.set("storage.use-async-entity-db", enableAsyncEntityDB);
         config.set("world-migration.delay", worldMigrationDelay);
         config.set("plugins.auto-updater-enabled", enableAutoPluginUpdater);
+        config.set("language", language);
 
         try {
             config.save(configFile);
