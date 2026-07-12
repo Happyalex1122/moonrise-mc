@@ -110,9 +110,12 @@ public class MoonrisePluginUpdater {
                                 }
 
                                 String downloadUrl = targetFileObj.get("url").getAsString();
-                                String filename = targetFileObj.get("filename").getAsString();
+                                String originalFilename = hashToFile.get(entry.getKey());
+                                if (originalFilename == null) {
+                                    originalFilename = targetFileObj.get("filename").getAsString();
+                                }
 
-                                boolean success = downloadFile(downloadUrl, filename);
+                                boolean success = downloadFile(downloadUrl, originalFilename);
                                 if (success) {
                                     updatedCount++;
                                 }
