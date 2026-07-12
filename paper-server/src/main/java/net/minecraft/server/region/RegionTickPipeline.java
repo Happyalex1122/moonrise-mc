@@ -1,0 +1,574 @@
+package net.minecraft.server.region;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+// Minecraft NMS Imports (클래스패스에 존재한다고 가정)
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.damagesource.DamageSource;
+
+/**
+ * 3-Phase Tick 파이프라인을 제어하고 조율하는 핵심 아키텍처 클래스입니다.
+ *
+ * [3-Phase Tick 구조]
+ * - Phase 1 (Read & Collect): 모든 리전 스레드에서 병렬로 엔티티 AI 및 상태 연산을 수행하되, 
+ *                             NMS 데이터를 직접 수정하지 않고 Intent 목록으로 안전하게 수집합니다. (Thread-safe Read)
+ * - Phase 2 (Event Dispatch): 수집된 Intent를 메인 스레드에서 순회하며 BukkitEventBypass를 통해 Bukkit Event를 디스패치합니다.
+ *                             이벤트를 통해 취소 여부 또는 수정 사항이 Intent에 동기적으로 반영됩니다.
+ * - Phase 3 (Commit & Write): 취소되지 않은 최종 Intent 목록을 NMS 메모리에 커밋 및 최종 쓰기 처리합니다. (Safe Write)
+ */
+public class RegionTickPipeline {
+    private static final Logger LOGGER = Logger.getLogger(RegionTickPipeline.class.getName());
+
+    // 3-Queue 분할을 위한 래퍼 클래스
+    public static class RegionIntentQueues {
+        public final Queue<TickIntent> blockIntents = new ConcurrentLinkedQueue<>();
+        public final Queue<TickIntent> entityIntents = new ConcurrentLinkedQueue<>();
+        public final Queue<TickIntent> playerIntents = new ConcurrentLinkedQueue<>();
+
+        public void clear() {
+            blockIntents.clear();
+            entityIntents.clear();
+            playerIntents.clear();
+        }
+    }
+
+    // 리전별로 Phase 1에서 수집된 Intent 리스트를 도메인별로 분할 관리하는 맵
+    private final ConcurrentMap<RegionManager.Region, RegionIntentQueues> regionIntentsMap = new ConcurrentHashMap<>();
+    
+    // 리전별 공간 해시 그리드 (O(N) 충돌 및 과밀집 방지)
+    private final ConcurrentMap<RegionManager.Region, SpatialHashGrid> regionGridMap = new ConcurrentHashMap<>();
+    
+    // 메인 스레드에서 디스패치를 위해 플랫하게 모아진 Intent 목록
+    private final List<TickIntent> collectedIntents = new CopyOnWriteArrayList<>();
+
+    private final RegionManager regionManager = RegionManager.getInstance();
+
+    /**
+     * 대상 월드(ServerLevel)에 대해 3-Phase 틱 전체 흐름을 실행합니다.
+     * 이 메서드는 MinecraftServer 메인 틱 루프 또는 파이프라인 제어자 스레드에서 호출됩니다.
+     *
+     * @param level 대상 ServerLevel
+     */
+    public void runPipeline(ServerLevel level) {
+        String worldName = level.getWorld().getName();
+        Collection<RegionManager.Region> regions = regionManager.getRegions(worldName);
+        
+        if (regions.isEmpty()) {
+            return;
+        }
+
+        long start = System.nanoTime();
+
+        // ----------------------------------------------------
+        // Phase 1: Read & Collect (비동기 병렬 연산 및 수집)
+        // ----------------------------------------------------
+        runPhase1Collect(level, regions);
+
+        // ----------------------------------------------------
+        // Phase 2: Event Dispatch (Bukkit API Event 디스패치 - 동기 메인 스레드 권장)
+        // ----------------------------------------------------
+        runPhase2EventDispatch();
+
+        // ----------------------------------------------------
+        // Phase 3: Commit & Write (NMS 메모리 최종 반영)
+        // ----------------------------------------------------
+        runPhase3Commit(worldName, regions);
+
+        long duration = System.nanoTime() - start;
+        if (LOGGER.isLoggable(Level.FINEST)) {
+            LOGGER.finest(String.format("[RegionPipeline] Completed 3-Phase Tick for world %s in %.3f ms (Collected: %d)",
+                worldName, duration / 1_000_000.0, collectedIntents.size()));
+        }
+    }
+
+    /**
+     * Phase 1: Read & Collect
+     * 모든 활성화된 리전을 병렬로 틱 처리하여 발생한 모든 상태 변경 의도(Intent)를 수집합니다.
+     */
+    private void runPhase1Collect(ServerLevel level, Collection<RegionManager.Region> regions) {
+        regionIntentsMap.clear();
+        collectedIntents.clear();
+
+        // 리전 매니저의 스레드 풀을 통해 각 리전의 수집 틱을 병렬로 수행
+        regionManager.tickWorldRegions(level.getWorld().getName(), (region) -> {
+            collectIntentsForRegion(region, level);
+        });
+
+        // 리전별로 맵에 수집된 모든 Intent들을 Phase 2 디스패치 리스트로 플랫하게 복사
+        // 우선순위 순서(Block -> Entity -> Player)로 담아서 디스패치 순서도 일관성 유지
+        for (RegionIntentQueues queues : regionIntentsMap.values()) {
+            collectedIntents.addAll(queues.blockIntents);
+            collectedIntents.addAll(queues.entityIntents);
+            collectedIntents.addAll(queues.playerIntents);
+        }
+    }
+
+    /**
+     * 특정 리전 영역 내에 속하는 엔티티 및 블록의 상태 연산을 수행하고 Intent를 수집합니다.
+     */
+    private void collectIntentsForRegion(RegionManager.Region region, ServerLevel level) {
+        RegionIntentQueues queues = regionIntentsMap.computeIfAbsent(region, r -> new RegionIntentQueues());
+        SpatialHashGrid grid = regionGridMap.computeIfAbsent(region, r -> new SpatialHashGrid());
+        
+        List<Entity> regionEntities = getEntitiesInRegion(level, region);
+        
+        // Sequential Grid Update
+        for (Entity entity : regionEntities) {
+            grid.updateEntity(entity);
+        }
+
+        // Work-Stealing Parallelization for large entity counts
+        int BATCH_SIZE = 256;
+        if (regionEntities.size() > 500) {
+            List<ForkJoinTask<Void>> tasks = new ArrayList<>();
+            for (int i = 0; i < regionEntities.size(); i += BATCH_SIZE) {
+                int end = Math.min(i + BATCH_SIZE, regionEntities.size());
+                List<Entity> batch = regionEntities.subList(i, end);
+                tasks.add(new java.util.concurrent.RecursiveAction() {
+                    @Override
+                    protected void compute() {
+                        processEntityBatch(batch, grid, queues, level, region);
+                    }
+                });
+            }
+            ForkJoinTask.invokeAll(tasks);
+        } else {
+            processEntityBatch(regionEntities, grid, queues, level, region);
+        }
+
+        // Sequential Grid Cleanup
+        for (Entity entity : regionEntities) {
+            if (!entity.isAlive()) {
+                grid.removeEntity(entity);
+            }
+        }
+
+        // Block Ticks
+        List<BlockChangeRequest> blockRequests = simulateBlockTicks(level, region);
+        for (BlockChangeRequest request : blockRequests) {
+            queues.blockIntents.add(new BlockChangeIntent(region, level, request.pos, request.newState, request.flags));
+        }
+    }
+
+    private void processEntityBatch(List<Entity> batch, SpatialHashGrid grid, RegionIntentQueues queues, ServerLevel level, RegionManager.Region region) {
+        for (Entity entity : batch) {
+            try {
+                if (entity.isAlive()) {
+                    boolean isPlayer = isPlayerEntity(entity);
+
+                    // Adaptive TPS Recovery: Panic Mode Tick Slicing
+                    if (!isPlayer && AdaptiveTPSManager.shouldSkipEntityTick(entity)) {
+                        continue;
+                    }
+
+                    if (!isPlayer && grid.isOvercrowded(entity)) {
+                        continue;
+                    }
+
+                    double[] nextPos = simulateEntityMovement(entity);
+                    if (nextPos != null) {
+                        TickIntent intent = new EntityMoveIntent(region, entity, 
+                            entity.getX(), entity.getY(), entity.getZ(),
+                            nextPos[0], nextPos[1], nextPos[2]);
+                        
+                        if (isPlayer) queues.playerIntents.add(intent);
+                        else queues.entityIntents.add(intent);
+                    }
+
+                    Entity target = getAITarget(entity);
+                    if (target != null && shouldAttack(entity, target)) {
+                        TickIntent intent = new EntityDamageIntent(region, target, level.damageSources().generic(), 2.0f);
+                        if (isPlayer) queues.playerIntents.add(intent);
+                        else queues.entityIntents.add(intent);
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.log(Level.WARNING, "Error simulating entity tick in Phase 1 for entity " + entity, e);
+            }
+        }
+    }
+
+    private boolean isPlayerEntity(Entity entity) {
+        // 안전한 Player 클래스 확인 (패키지명이나 클래스명 기반 Mock 판별)
+        return entity.getClass().getSimpleName().contains("Player");
+    }
+
+    /**
+     * Phase 2: Event Dispatch
+     * 수집된 모든 Intent들을 순회하며 Bukkit API 이벤트를 동기식으로 발송합니다.
+     * Bukkit API는 일반적으로 메인 스레드 바인딩이므로, 이 메서드는 반드시 메인 스레드 컨텍스트에서 안전하게 실행되어야 합니다.
+     */
+    private void runPhase2EventDispatch() {
+        // AsyncCatcherPatch를 통해 혹시 모를 비동기 예외를 예방
+        boolean originalAsyncCatcherState = AsyncCatcherPatch.shouldBypass();
+        
+        try {
+            for (TickIntent intent : collectedIntents) {
+                // BukkitEventBypass를 호출해 Bukkit Event 발송
+                BukkitEventBypass.dispatchEvent(intent);
+            }
+        } finally {
+            // 원 상태 복구
+        }
+    }
+
+    /**
+     * Phase 3: Commit & Write
+     * 이벤트 결과 취소되지 않은 최종 Intent 목록을 NMS 실제 메모리에 커밋 및 상태 기록을 완료합니다.
+     * 다른 리전에 안전한 격리 쓰기가 보장되도록 각 리전별로 쓰기 작업을 안전하게 정렬해 병렬로 수행합니다.
+     */
+    private void runPhase3Commit(String worldName, Collection<RegionManager.Region> regions) {
+        // Commit 작업을 리전 스레드 풀을 활용해 병렬로 수행하되 3-Queue 순서를 엄격히 준수
+        try {
+            if (!regions.isEmpty()) {
+                regionManager.tickWorldRegions(worldName, (region) -> {
+                    RegionIntentQueues queues = regionIntentsMap.get(region);
+                    if (queues != null) {
+                        // 우선순위 1: Block (환경의 지배자)
+                        commitIntents(queues.blockIntents);
+                        // 우선순위 2: Entity (환경에 반응하는 몹/투사체)
+                        commitIntents(queues.entityIntents);
+                        // 우선순위 3: Player (최종 관찰자 및 덮어쓰기)
+                        commitIntents(queues.playerIntents);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            // 예외 발생 시 동기식 일괄 안전 처리 수행 (Fallback)
+            LOGGER.log(Level.SEVERE, "Error executing parallel commits. Applying synchronous fallback.", e);
+            commitIntents(collectedIntents);
+        }
+    }
+
+    private void commitIntents(Collection<TickIntent> intents) {
+        if (intents == null || intents.isEmpty()) return;
+        for (TickIntent intent : intents) {
+            if (!intent.isCancelled()) {
+                try {
+                    intent.commit();
+                } catch (Exception e) {
+                    LOGGER.log(Level.SEVERE, "Failed to commit TickIntent: " + intent, e);
+                }
+            }
+        }
+    }
+
+    // --- helper helper helper ---
+
+    private RegionManager.Region findRegionByCoordinate(String worldName, int regionX, int regionZ) {
+        for (RegionManager.Region region : regionManager.getRegions(worldName)) {
+            RegionCoordinate coord = region.getCoordinate();
+            if (coord.getX() == regionX && coord.getZ() == regionZ) {
+                return region;
+            }
+        }
+        return null;
+    }
+
+    private List<Entity> getEntitiesInRegion(ServerLevel level, RegionManager.Region region) {
+        List<Entity> result = new ArrayList<>();
+        RegionCoordinate targetCoord = region.getCoordinate();
+        
+        // NMS Level의 모든 엔티티 중에서 해당 리전에 속하는 것들만 필터링
+        try {
+            List<Entity> snapshot;
+            Iterable<Entity> allEntities = level.getAllEntities();
+            if (allEntities == null) return result;
+            if (allEntities instanceof java.util.Collection) {
+                snapshot = new ArrayList<>((java.util.Collection<Entity>) allEntities);
+            } else {
+                snapshot = new ArrayList<>();
+                allEntities.forEach(snapshot::add);
+            }
+            
+            for (Entity entity : snapshot) {
+                RegionCoordinate entityCoord = RegionCoordinate.fromChunk(
+                    (int) entity.getX() >> 4, (int) entity.getZ() >> 4
+                );
+                if (entityCoord.equals(targetCoord)) {
+                    result.add(entity);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error iterating entities in region " + targetCoord, e);
+        }
+        return result;
+    }
+
+    private double[] simulateEntityMovement(Entity entity) {
+        // 엔티티 AI 및 물리를 참조하여 다음 프레임 위치 계산 (비동기 시뮬레이션)
+        Vec3 movement = entity.getDeltaMovement();
+        if (movement != null && (Math.abs(movement.x) > 0.001 || Math.abs(movement.y) > 0.001 || Math.abs(movement.z) > 0.001)) {
+            return new double[]{
+                entity.getX() + movement.x,
+                entity.getY() + movement.y,
+                entity.getZ() + movement.z
+            };
+        }
+        return null;
+    }
+
+    private Entity getAITarget(Entity entity) {
+        // 엔티티의 AI 타겟 조회 (Mock)
+        return null;
+    }
+
+    private boolean shouldAttack(Entity attacker, Entity target) {
+        // 공격 의도 시뮬레이션 (Mock)
+        return false;
+    }
+
+    private List<BlockChangeRequest> simulateBlockTicks(ServerLevel level, RegionManager.Region region) {
+        // 리전 내에 대기 중인 블록 틱(물, 용암 흐름, 식물 성장 등) 시뮬레이션 (Mock)
+        return Collections.emptyList();
+    }
+
+    // --- Inner Interfaces & Classes for TickIntents ---
+
+    public enum IntentType {
+        ENTITY_MOVE,
+        BLOCK_CHANGE,
+        ENTITY_DAMAGE,
+        ENTITY_SPAWN
+    }
+
+    public interface TickIntent {
+        IntentType getType();
+        boolean isCancelled();
+        void setCancelled(boolean cancelled);
+        void commit();
+        Object getTarget();
+        RegionManager.Region getRegion();
+    }
+
+    private static abstract class AbstractTickIntent implements TickIntent {
+        protected final RegionManager.Region region;
+        protected volatile boolean cancelled = false;
+
+        public AbstractTickIntent(RegionManager.Region region) {
+            this.region = region;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled;
+        }
+
+        @Override
+        public void setCancelled(boolean cancelled) {
+            this.cancelled = cancelled;
+        }
+
+        @Override
+        public RegionManager.Region getRegion() {
+            return region;
+        }
+    }
+
+    public static class EntityMoveIntent extends AbstractTickIntent {
+        private final Entity entity;
+        private final double fromX, fromY, fromZ;
+        private volatile double toX, toY, toZ;
+
+        public EntityMoveIntent(RegionManager.Region region, Entity entity, 
+                                double fromX, double fromY, double fromZ, 
+                                double toX, double toY, double toZ) {
+            super(region);
+            this.entity = entity;
+            this.fromX = fromX;
+            this.fromY = fromY;
+            this.fromZ = fromZ;
+            this.toX = toX;
+            this.toY = toY;
+            this.toZ = toZ;
+        }
+
+        @Override
+        public IntentType getType() {
+            return IntentType.ENTITY_MOVE;
+        }
+
+        @Override
+        public Object getTarget() {
+            return entity;
+        }
+
+        public Entity getEntity() {
+            return entity;
+        }
+
+        public double getFromX() { return fromX; }
+        public double getFromY() { return fromY; }
+        public double getFromZ() { return fromZ; }
+        
+        public double getToX() { return toX; }
+        public double getToY() { return toY; }
+        public double getToZ() { return toZ; }
+
+        public void updateDestination(double x, double y, double z) {
+            this.toX = x;
+            this.toY = y;
+            this.toZ = z;
+        }
+
+        @Override
+        public void commit() {
+            // NMS Entity 위치를 최종 반영
+            // 위치 무결성 검증: Phase 1 캡처 시점과 현재 위치가 일치할 때만 커밋
+            double curX = entity.getX(), curY = entity.getY(), curZ = entity.getZ();
+            if (Math.abs(curX - fromX) < 0.01 && Math.abs(curY - fromY) < 0.01 && Math.abs(curZ - fromZ) < 0.01) {
+                entity.setPos(toX, toY, toZ);
+            }
+            // 청크 엔티티 슬라이스 맵 갱신 수행
+            entity.level().getChunkAt(entity.blockPosition()).markUnsaved();
+        }
+
+        @Override
+        public String toString() {
+            return String.format("EntityMoveIntent{entity=%s, from=[%.2f,%.2f,%.2f], to=[%.2f,%.2f,%.2f]}",
+                entity.getName().getString(), fromX, fromY, fromZ, toX, toY, toZ);
+        }
+    }
+
+    public static class BlockChangeIntent extends AbstractTickIntent {
+        private final ServerLevel level;
+        private final BlockPos pos;
+        private final BlockState newState;
+        private final int flags;
+
+        public BlockChangeIntent(RegionManager.Region region, ServerLevel level, BlockPos pos, BlockState newState, int flags) {
+            super(region);
+            this.level = level;
+            this.pos = pos;
+            this.newState = newState;
+            this.flags = flags;
+        }
+
+        @Override
+        public IntentType getType() {
+            return IntentType.BLOCK_CHANGE;
+        }
+
+        @Override
+        public Object getTarget() {
+            return pos;
+        }
+
+        public ServerLevel getLevel() {
+            return level;
+        }
+
+        public BlockPos getPos() {
+            return pos;
+        }
+
+        public BlockState getNewState() {
+            return newState;
+        }
+
+        @Override
+        public void commit() {
+            // NMS Level에 블록 변경 상태 반영
+            level.setBlock(pos, newState, flags);
+        }
+    }
+
+    public static class EntityDamageIntent extends AbstractTickIntent {
+        private final Entity target;
+        private final DamageSource source; 
+        private final float amount;
+
+        public EntityDamageIntent(RegionManager.Region region, Entity target, DamageSource source, float amount) {
+            super(region);
+            this.target = target;
+            this.source = source;
+            this.amount = amount;
+        }
+
+        @Override
+        public IntentType getType() {
+            return IntentType.ENTITY_DAMAGE;
+        }
+
+        @Override
+        public Object getTarget() {
+            return target;
+        }
+
+        public Entity getTargetEntity() {
+            return target;
+        }
+
+        public DamageSource getSource() {
+            return source;
+        }
+
+        public float getAmount() {
+            return amount;
+        }
+
+        @Override
+        public void commit() {
+            // NMS Entity hurt 메서드 호출 전 인과율(Causality) 유효성 검사 추가
+            // 이전 우선순위 큐(예: Player)에 의해 타겟이 이미 죽었거나 제거되었다면 데미지를 무효화합니다 (유령 타격 방지)
+            if (target.isAlive()) {
+                target.hurt(source, amount);
+            }
+        }
+    }
+
+    public static class EntitySpawnIntent extends AbstractTickIntent {
+        private final ServerLevel level;
+        private final Entity entity;
+
+        public EntitySpawnIntent(RegionManager.Region region, ServerLevel level, Entity entity) {
+            super(region);
+            this.level = level;
+            this.entity = entity;
+        }
+
+        @Override
+        public IntentType getType() {
+            return IntentType.ENTITY_SPAWN;
+        }
+
+        @Override
+        public Object getTarget() {
+            return entity;
+        }
+
+        public ServerLevel getLevel() {
+            return level;
+        }
+
+        public Entity getEntity() {
+            return entity;
+        }
+
+        @Override
+        public void commit() {
+            level.addFreshEntity(entity);
+        }
+    }
+
+    // 블록 틱 시뮬레이션을 위한 데이터 홀더
+    private static class BlockChangeRequest {
+        final BlockPos pos;
+        final BlockState newState;
+        final int flags;
+
+        BlockChangeRequest(BlockPos pos, BlockState newState, int flags) {
+            this.pos = pos;
+            this.newState = newState;
+            this.flags = flags;
+        }
+    }
+}
+

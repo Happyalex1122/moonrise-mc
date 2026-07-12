@@ -119,7 +119,7 @@ public class TickThread extends Thread {
     }
 
     public static boolean isTickThread() {
-        return Thread.currentThread() instanceof TickThread;
+        return Thread.currentThread() instanceof TickThread || net.minecraft.server.region.AsyncCatcherPatch.shouldBypass();
     }
 
     public static boolean isShutdownThread() {

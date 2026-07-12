@@ -2,7 +2,8 @@ package net.minecraft.server.region;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 // NMS/Bukkit Imports for priority filtering
 import net.minecraft.world.entity.Entity;
@@ -18,8 +19,8 @@ public class AdaptiveTPSManager {
     private static long RECOVERY_THRESHOLD_NANOS;
 
     static {
-        setPanicTps(Double.parseDouble(System.getProperty("adaptive.panic.tps", "10.0")));
-        setRecoveryTps(Double.parseDouble(System.getProperty("adaptive.recovery.tps", "15.0")));
+        setPanicTps(Double.parseDouble(System.getProperty("adaptive.panic.tps", "15.0")));
+        setRecoveryTps(Double.parseDouble(System.getProperty("adaptive.recovery.tps", "18.0")));
     }
 
     public static void setPanicTps(double tps) {
@@ -40,7 +41,7 @@ public class AdaptiveTPSManager {
     private static final ThreadLocal<Long> localTickStartTime = ThreadLocal.withInitial(() -> 0L);
 
     // Cache for fast proximity checks without querying the world repeatedly
-    private static volatile double[] flattenedPlayerPositions = new double[0];
+    private static final List<double[]> cachedPlayerPositions = new CopyOnWriteArrayList<>();
 
     private static long panicStartTime = 0L;
     private static long lastPrintTime = 0L;
@@ -51,9 +52,7 @@ public class AdaptiveTPSManager {
     }
 
     public static void endLocalTick() {
-        long start = localTickStartTime.get();
-        if (start == 0L) return;
-        long duration = System.nanoTime() - start;
+        long duration = System.nanoTime() - localTickStartTime.get();
         recordLocalTickTime(duration);
     }
 
@@ -91,11 +90,6 @@ public class AdaptiveTPSManager {
         return localPanicMode.get();
     }
 
-    public static boolean isLocalPanicMode(String worldName) {
-        // Fallback to thread-local panic mode for now, since per-world TPS configs are not fully exposed yet
-        return isLocalPanicMode();
-    }
-
     public static void recordTickTime(long timeNanos) {
         lastTickTimeNanos.set(timeNanos);
         long now = System.currentTimeMillis();
@@ -122,23 +116,11 @@ public class AdaptiveTPSManager {
         // Update player positions once per tick if we are in panic mode (to save overhead)
         if (panicMode.get()) {
             try {
+                cachedPlayerPositions.clear();
                 if (Bukkit.getServer() != null) {
-                    Collection<? extends Player> players = Bukkit.getOnlinePlayers();
-                    double[] newPositions = new double[players.size() * 3];
-                    int i = 0;
-                    for (Player p : players) {
-                        if (i + 2 >= newPositions.length) break;
-                        net.minecraft.world.entity.player.Player nmsPlayer = ((org.bukkit.craftbukkit.entity.CraftPlayer) p).getHandle();
-                        newPositions[i++] = nmsPlayer.getX();
-                        newPositions[i++] = nmsPlayer.getY();
-                        newPositions[i++] = nmsPlayer.getZ();
-                    }
-                    if (i != newPositions.length) {
-                        double[] exactPositions = new double[i];
-                        System.arraycopy(newPositions, 0, exactPositions, 0, i);
-                        flattenedPlayerPositions = exactPositions;
-                    } else {
-                        flattenedPlayerPositions = newPositions;
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        org.bukkit.Location loc = p.getLocation();
+                        cachedPlayerPositions.add(new double[]{loc.getX(), loc.getY(), loc.getZ()});
                     }
                 }
             } catch (Exception e) {
@@ -174,11 +156,10 @@ public class AdaptiveTPSManager {
         double ez = entity.getZ();
         
         boolean nearPlayer = false;
-        double[] positions = flattenedPlayerPositions;
-        for (int i = 0; i < positions.length; i += 3) {
-            double dx = positions[i] - ex;
-            double dy = positions[i+1] - ey;
-            double dz = positions[i+2] - ez;
+        for (double[] pos : cachedPlayerPositions) {
+            double dx = pos[0] - ex;
+            double dy = pos[1] - ey;
+            double dz = pos[2] - ez;
             // 8 blocks squared = 64
             if ((dx*dx + dy*dy + dz*dz) < 64.0) {
                 nearPlayer = true;
