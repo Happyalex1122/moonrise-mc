@@ -27,7 +27,7 @@ public class MoonrisePluginUpdater {
         if (!net.minecraft.server.config.MoonriseConfig.enableAutoPluginUpdater) {
             return;
         }
-        new Thread(() -> {
+        Thread updaterThread = new Thread(() -> {
             try {
                 File pluginsDir = new File("plugins");
                 if (!pluginsDir.exists() || !pluginsDir.isDirectory()) {
@@ -133,7 +133,18 @@ public class MoonrisePluginUpdater {
                 // Ignore exceptions to prevent crashing the server
                 System.err.println("[Moonrise] Async update check failed: " + e.getMessage());
             }
-        }, "Moonrise-Plugin-Updater").start();
+        }, "Moonrise-Plugin-Updater");
+        
+        updaterThread.start();
+        
+        if (Boolean.getBoolean("moonrise.updater.sync")) {
+            System.out.println("[Moonrise] Waiting for plugin auto-updater to finish... (-Dmoonrise.updater.sync=true)");
+            try {
+                updaterThread.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     private static String calculateSHA1(File file) {
