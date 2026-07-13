@@ -123,9 +123,23 @@ public class MoonrisePluginUpdater {
                                     originalFilename = targetFileObj.get("filename").getAsString();
                                 }
 
-                                boolean success = downloadFile(downloadUrl, originalFilename);
-                                if (success) {
-                                    updatedCount++;
+                                // Prevent downloading if we already have this exact file
+                                boolean alreadyLatest = false;
+                                if (targetFileObj.has("hashes")) {
+                                    JsonObject hashesObj = targetFileObj.getAsJsonObject("hashes");
+                                    if (hashesObj.has("sha1")) {
+                                        String newSha1 = hashesObj.get("sha1").getAsString();
+                                        if (newSha1.equalsIgnoreCase(entry.getKey())) {
+                                            alreadyLatest = true;
+                                        }
+                                    }
+                                }
+
+                                if (!alreadyLatest) {
+                                    boolean success = downloadFile(downloadUrl, originalFilename);
+                                    if (success) {
+                                        updatedCount++;
+                                    }
                                 }
                             }
                         }
