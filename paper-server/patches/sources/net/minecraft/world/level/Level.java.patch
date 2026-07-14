@@ -732,7 +732,7 @@
      protected Level(
          final WritableLevelData levelData,
          final ResourceKey<Level> dimension,
-@@ -141,11 +837,43 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -141,19 +837,92 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
          final boolean isDebug,
          final long biomeZoomSeed,
          final int maxChainedNeighborUpdates
@@ -776,8 +776,8 @@
          this.thread = Thread.currentThread();
          this.biomeManager = new BiomeManager(this, biomeZoomSeed);
          this.isDebug = isDebug;
-@@ -153,7 +881,49 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
-         this.registryAccess = registryAccess;
+         this.neighborUpdater = new CollectingNeighborUpdater(this, maxChainedNeighborUpdates);
+-        this.registryAccess = registryAccess;
          this.palettedContainerFactory = PalettedContainerFactory.create(registryAccess);
          this.damageSources = new DamageSources(registryAccess);
 +        this.entityLookup = new ca.spottedleaf.moonrise.patches.chunk_system.level.entity.dfl.DefaultEntityLookup(this); // Paper - rewrite chunk system
@@ -826,7 +826,7 @@
  
      @Override
      public boolean isClientSide() {
-@@ -165,8 +935,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -165,8 +934,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
          return null;
      }
  
@@ -843,7 +843,7 @@
      }
  
      public boolean isInValidBounds(final BlockPos pos) {
-@@ -178,7 +955,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -178,7 +954,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
      }
  
      private static boolean isInWorldBoundsHorizontal(final BlockPos pos) {
@@ -852,7 +852,7 @@
      }
  
      private static boolean isInValidBoundsHorizontal(final BlockPos pos) {
-@@ -191,15 +968,80 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -191,15 +967,80 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
          return y < -20000000 || y >= 20000000;
      }
  
@@ -936,7 +936,7 @@
      @Override
      public @Nullable ChunkAccess getChunk(final int chunkX, final int chunkZ, final ChunkStatus status, final boolean loadOrGenerate) {
          ChunkAccess chunk = this.getChunkSource().getChunk(chunkX, chunkZ, status, loadOrGenerate);
-@@ -217,6 +1059,22 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -217,6 +1058,22 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
  
      @Override
      public boolean setBlock(final BlockPos pos, final BlockState blockState, @Block.UpdateFlags final int updateFlags, final int updateLimit) {
@@ -959,7 +959,7 @@
          if (!this.isInValidBounds(pos)) {
              return false;
          }
-@@ -227,13 +1085,36 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -227,13 +1084,36 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
  
          LevelChunk chunk = this.getChunkAt(pos);
          Block block = blockState.getBlock();
@@ -997,7 +997,7 @@
              if (oldState != newState) {
                  this.setBlocksDirty(pos, oldState, newState);
              }
-@@ -260,10 +1141,64 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -260,10 +1140,64 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
  
              this.updatePOIOnBlockStateChange(pos, oldState, newState);
          }
@@ -1062,7 +1062,7 @@
      public void updatePOIOnBlockStateChange(final BlockPos pos, final BlockState oldState, final BlockState newState) {
      }
  
-@@ -274,20 +1209,38 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -274,20 +1208,38 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
      }
  
      @Override
@@ -1105,7 +1105,7 @@
          }
  
          boolean destroyed = this.setBlock(pos, fluidState.createLegacyBlock(), Block.UPDATE_ALL, updateLimit);
-@@ -319,11 +1272,31 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -319,11 +1271,31 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
      }
  
      public void neighborChanged(final BlockPos pos, final Block changedBlock, final @Nullable Orientation orientation) {
@@ -1137,7 +1137,7 @@
      }
  
      @Override
-@@ -361,11 +1334,19 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -361,11 +1333,19 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
  
      @Override
      public BlockState getBlockState(final BlockPos pos) {
@@ -1158,7 +1158,7 @@
          return chunk.getBlockState(pos);
      }
  
-@@ -525,6 +1506,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -525,6 +1505,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
      }
  
      public void addBlockEntityTicker(final TickingBlockEntity ticker) {
@@ -1166,7 +1166,7 @@
          (this.tickingBlockEntities ? this.pendingBlockEntityTickers : this.blockEntityTickers).add(ticker);
      }
  
-@@ -535,18 +1517,29 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -535,18 +1516,29 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
              this.pendingBlockEntityTickers.clear();
          }
  
@@ -1200,7 +1200,7 @@
          this.tickingBlockEntities = false;
      }
  
-@@ -554,13 +1547,32 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -554,13 +1546,32 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
          try {
              tick.accept(entity);
          } catch (Throwable t) {
@@ -1237,7 +1237,7 @@
      public boolean shouldTickDeath(final Entity entity) {
          return true;
      }
-@@ -693,10 +1705,16 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -693,10 +1704,16 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
  
      @Override
      public @Nullable BlockEntity getBlockEntity(final BlockPos pos) {
@@ -1255,7 +1255,7 @@
                  ? null
                  : this.getChunkAt(pos).getBlockEntity(pos, LevelChunk.EntityCreationType.IMMEDIATE);
          }
-@@ -705,6 +1723,12 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -705,6 +1722,12 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
      public void setBlockEntity(final BlockEntity blockEntity) {
          BlockPos pos = blockEntity.getBlockPos();
          if (this.isInValidBounds(pos)) {
@@ -1268,7 +1268,7 @@
              this.getChunkAt(pos).addAndRegisterBlockEntity(blockEntity);
          }
      }
-@@ -770,20 +1794,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -770,20 +1793,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
      @Override
      public List<Entity> getEntities(final @Nullable Entity except, final AABB bb, final Predicate<? super Entity> selector) {
          Profiler.get().incrementCounter("getEntities");
@@ -1296,7 +1296,7 @@
      }
  
      @Override
-@@ -799,33 +1818,94 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -799,33 +1817,94 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
          this.getEntities(type, bb, selector, output, Integer.MAX_VALUE);
      }
  
@@ -1411,7 +1411,7 @@
  
      public <T extends Entity> boolean hasEntities(final EntityTypeTest<Entity, T> type, final AABB bb, final Predicate<? super T> selector) {
          Profiler.get().incrementCounter("hasEntities");
-@@ -1111,12 +2191,24 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -1111,12 +2190,24 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
          return this.palettedContainerFactory;
      }
  
@@ -1437,7 +1437,7 @@
  
          public static final Codec<Level.ExplosionInteraction> CODEC = StringRepresentable.fromEnum(Level.ExplosionInteraction::values);
          private final String id;
-@@ -1130,4 +2222,10 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -1130,4 +2221,10 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
              return this.id;
          }
      }
