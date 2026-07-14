@@ -1120,7 +1120,7 @@
 +        }
 +
 +        try {
-+            state.neighborChanged(this, pos, changedBlock, orientation, movedByPiston);
++            state.handleNeighborChanged(this, pos, changedBlock, orientation, movedByPiston);
 +        } catch (Throwable throwable) {
 +            CrashReport crashreport = CrashReport.forThrowable(throwable, "Exception while updating neighbours");
 +            CrashReportCategory crashreportcategory = crashreport.addCategory("Block being updated");
