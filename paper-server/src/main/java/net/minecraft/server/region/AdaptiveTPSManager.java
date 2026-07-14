@@ -17,6 +17,8 @@ public class AdaptiveTPSManager {
 
     private static long PANIC_THRESHOLD_NANOS;
     private static long RECOVERY_THRESHOLD_NANOS;
+    private static final long SERVER_STARTUP_TIME = System.currentTimeMillis();
+    private static final long STARTUP_GRACE_PERIOD_MS = 60000L; // 60 seconds grace period during startup
 
     static {
         setPanicTps(Double.parseDouble(System.getProperty("adaptive.panic.tps", "15.0")));
@@ -59,6 +61,10 @@ public class AdaptiveTPSManager {
     public static void recordLocalTickTime(long timeNanos) {
         long now = System.currentTimeMillis();
         
+        if (now - SERVER_STARTUP_TIME < STARTUP_GRACE_PERIOD_MS) {
+            return; // Ignore TPS drops during the first 60 seconds of server startup
+        }
+        
         if (timeNanos > PANIC_THRESHOLD_NANOS) {
             if (!localPanicMode.get()) {
                 localPanicMode.set(true);
@@ -91,8 +97,13 @@ public class AdaptiveTPSManager {
     }
 
     public static void recordTickTime(long timeNanos) {
-        lastTickTimeNanos.set(timeNanos);
         long now = System.currentTimeMillis();
+        
+        if (now - SERVER_STARTUP_TIME < STARTUP_GRACE_PERIOD_MS) {
+            return; // Ignore TPS drops during the first 60 seconds of server startup
+        }
+        
+        lastTickTimeNanos.set(timeNanos);
         
         if (timeNanos > PANIC_THRESHOLD_NANOS) {
             if (!panicMode.get()) {

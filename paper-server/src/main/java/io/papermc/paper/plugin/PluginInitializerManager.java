@@ -100,6 +100,14 @@ public class PluginInitializerManager {
         // We have to load the bukkit configuration inorder to get the update folder location.
         io.papermc.paper.plugin.PluginInitializerManager pluginSystem = io.papermc.paper.plugin.PluginInitializerManager.init(optionSet);
 
+        // Moonrise start - Early init config and plugin updater BEFORE plugins are loaded!
+        net.minecraft.server.config.MoonriseConfig.init();
+        org.moonrise.updater.MoonriseLang.init();
+        org.moonrise.MoonriseAutoUpdater.checkUpdatesAsync();
+        net.minecraft.SharedConstants.tryDetectVersion();
+        org.moonrise.updater.MoonrisePluginUpdater.runAsyncUpdateCheck(net.minecraft.SharedConstants.getCurrentVersion().name());
+        // Moonrise end
+
         // Register the default plugin directory
         io.papermc.paper.plugin.util.EntrypointUtil.registerProvidersFromSource(io.papermc.paper.plugin.provider.source.DirectoryProviderSource.INSTANCE, pluginSystem.pluginDirectoryPath());
 

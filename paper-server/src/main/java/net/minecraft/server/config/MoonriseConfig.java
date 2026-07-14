@@ -16,6 +16,8 @@ public class MoonriseConfig {
     public static boolean enableAsyncEntityDB = true;
     public static long worldMigrationDelay = 30000L;
     public static boolean enableAutoPluginUpdater = false;
+    public static String curseforgeApiKey = "";
+    public static java.util.Map<String, Integer> spigotMappings = new java.util.HashMap<>();
     public static String language = "ko";
 
     public static void init() {
@@ -32,6 +34,35 @@ public class MoonriseConfig {
         enableAsyncEntityDB = config.getBoolean("storage.use-async-entity-db", true);
         worldMigrationDelay = config.getLong("world-migration.delay", 30000L);
         enableAutoPluginUpdater = config.getBoolean("plugins.auto-updater-enabled", false);
+        
+        String rawKey = config.getString("plugins.curseforge-api-key", "");
+        if (rawKey != null && !rawKey.isEmpty()) {
+            if (rawKey.startsWith("ENC:")) {
+                curseforgeApiKey = decrypt(rawKey);
+            } else {
+                curseforgeApiKey = rawKey;
+                // Auto-encrypt and save back to config
+                config.set("plugins.curseforge-api-key", encrypt(rawKey));
+            }
+        } else {
+            curseforgeApiKey = "";
+            config.set("plugins.curseforge-api-key", "");
+        }
+
+        spigotMappings.clear();
+        if (config.isConfigurationSection("plugins.spigot-mappings")) {
+            org.bukkit.configuration.ConfigurationSection section = config.getConfigurationSection("plugins.spigot-mappings");
+            if (section != null) {
+                for (String key : section.getKeys(false)) {
+                    spigotMappings.put(key, section.getInt(key));
+                }
+            }
+        } else {
+            // Default example mapping
+            spigotMappings.put("ExampleSpigotPlugin-1.0.jar", 12345);
+            config.set("plugins.spigot-mappings.ExampleSpigotPlugin-1.0.jar", 12345);
+        }
+
         language = config.getString("language", "ko");
 
         // Save defaults if the file doesn't exist or is missing keys
@@ -41,6 +72,7 @@ public class MoonriseConfig {
         config.set("storage.use-async-entity-db", enableAsyncEntityDB);
         config.set("world-migration.delay", worldMigrationDelay);
         config.set("plugins.auto-updater-enabled", enableAutoPluginUpdater);
+        // curseforge-api-key is handled above
         config.set("language", language);
 
         try {
@@ -61,6 +93,36 @@ public class MoonriseConfig {
             config.save(configFile);
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private static final byte[] SECRET_KEY = "M00nr1s3_A3S_K3Y".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+    private static String encrypt(String plainText) {
+        if (plainText == null || plainText.isEmpty()) return plainText;
+        try {
+            javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(SECRET_KEY, "AES");
+            javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("AES");
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, secretKey);
+            byte[] encryptedBytes = cipher.doFinal(plainText.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return "ENC:" + java.util.Base64.getEncoder().encodeToString(encryptedBytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return plainText;
+        }
+    }
+
+    private static String decrypt(String encryptedText) {
+        if (encryptedText == null || !encryptedText.startsWith("ENC:")) return encryptedText;
+        try {
+            javax.crypto.spec.SecretKeySpec secretKey = new javax.crypto.spec.SecretKeySpec(SECRET_KEY, "AES");
+            javax.crypto.Cipher cipher = javax.crypto.Cipher.getInstance("AES");
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, secretKey);
+            byte[] decryptedBytes = cipher.doFinal(java.util.Base64.getDecoder().decode(encryptedText.substring(4)));
+            return new String(decryptedBytes, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return encryptedText;
         }
     }
 }
