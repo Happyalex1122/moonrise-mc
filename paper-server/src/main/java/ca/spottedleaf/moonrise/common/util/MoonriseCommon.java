@@ -41,22 +41,32 @@ public final class MoonriseCommon {
 
     public static void adjustWorkerThreads(final int configWorkerThreads, final int configIoThreads) {
         int defaultWorkerThreads = OSNuma.getNativeInstance().getTotalCores();
+        // Moonrise start - optimize default thread formulas for containers and low-core setups
+        int jvmCores = Runtime.getRuntime().availableProcessors();
+        if (jvmCores > defaultWorkerThreads) {
+            defaultWorkerThreads = jvmCores;
+        }
+
         if (defaultWorkerThreads <= 2) {
             defaultWorkerThreads = 1;
         } else if (defaultWorkerThreads <= 4) {
-            defaultWorkerThreads = 2;
+            defaultWorkerThreads = Math.max(2, defaultWorkerThreads - 1);
         } else {
-            defaultWorkerThreads = defaultWorkerThreads / 2;
+            defaultWorkerThreads = Math.min(8, (int) (defaultWorkerThreads * 0.6));
         }
         defaultWorkerThreads = Integer.getInteger(PlatformHooks.get().getBrand() + ".WorkerThreadCount", Integer.valueOf(defaultWorkerThreads));
 
         int workerThreads = configWorkerThreads;
-
         if (workerThreads <= 0) {
             workerThreads = defaultWorkerThreads;
         }
 
-        final int ioThreads = Math.max(1, configIoThreads);
+        int ioThreads = configIoThreads;
+        if (ioThreads <= 0) {
+            ioThreads = defaultWorkerThreads >= 3 ? 2 : 1;
+        }
+        ioThreads = Math.max(1, ioThreads);
+        // Moonrise end
 
         WORKER_POOL.adjustThreadCount(workerThreads);
         IO_POOL.adjustThreadCount(ioThreads);
