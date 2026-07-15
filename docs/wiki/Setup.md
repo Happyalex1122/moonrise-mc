@@ -19,9 +19,9 @@ The following directory structure is central to the project's development workfl
 - **Test Server Run Directory**: `D:\java_workspace\paper-fork\test_server_run` (Used for localized testing of newly built paperclips).
 - **Dashboard Repository**: `D:\java_workspace\moonrise-dashboard` (The React Native Expo frontend project).
 
-## Build Quirks & Paperweight 26.1.2
+## Build Quirks & Paperweight
 
-When developing with Paperweight 26.1.2, you may encounter specific build quirks related to how patches are handled.
+When developing with Paperweight, you may encounter specific build quirks related to how patches are handled.
 
 ### The `rebuildPatches` Issue
 Running the `rebuildPatches` task has a known bug in this environment. Modifying files that are already managed by feature patches (such as `Level.java`) and then running `rebuildPatches` incorrectly exports these files into the `patches/sources/` directory. This breaks the subsequent `compileJava` task, causing over 100 missing package errors due to incomplete or malformed source trees.
