@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Antigravity <antigravity@example.com>
+Date: Wed, 15 Jul 2026 17:45:24 +0900
+Subject: [PATCH] Fix packet issue spam on disconnect
+
+
+diff --git a/net/minecraft/network/PacketSendListener.java b/net/minecraft/network/PacketSendListener.java
+index cf02121b48890c3c50b35c7f95c6dbd1ba1fdfe3..d8f3a67d35a31482f2a162242a1d2d3b6feb3b03 100644
+--- a/net/minecraft/network/PacketSendListener.java
++++ b/net/minecraft/network/PacketSendListener.java
+@@ -22,6 +22,11 @@ public class PacketSendListener {
+     public static ChannelFutureListener exceptionallySend(final Supplier<@Nullable Packet<?>> handler) {
+         return future -> {
+             if (!future.isSuccess()) {
++                // Moonrise start - fix packet issue spam on disconnect
++                if (!future.channel().isActive() || future.cause() instanceof java.nio.channels.ClosedChannelException) {
++                    return;
++                }
++                // Moonrise end
+                 Packet<?> newPacket = handler.get();
+                 if (newPacket != null) {
+                     LOGGER.warn("Failed to deliver packet, sending fallback {}", newPacket.type(), future.cause());
