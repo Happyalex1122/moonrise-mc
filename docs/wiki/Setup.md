@@ -6,7 +6,7 @@ Setting up the development and execution environment for Moonrise-MC requires sp
 
 Moonrise-MC leverages experimental features and optimizations requiring **Java 25**. 
 - **Path configuration**: You must run the server with the specific Java 25 binary. 
-- Default Expected Path: `D:\Java25\bin\java.exe`
+- Default Expected Path: `/path/to/jdk-25/bin/java`
 
 Ensure that this JDK is set in your IDE or environment variables before attempting to compile or execute the Paper 26.1.2 server.
 
@@ -14,10 +14,10 @@ Ensure that this JDK is set in your IDE or environment variables before attempti
 
 The following directory structure is central to the project's development workflow:
 
-- **Server Core Repository**: `D:\java_workspace\paper-fork` (The main source tree containing Paper patches and build scripts).
-- **Main Working Directory**: `D:\java_workspace\server_jar` (General directory for production builds and resources).
-- **Test Server Run Directory**: `D:\java_workspace\paper-fork\test_server_run` (Used for localized testing of newly built paperclips).
-- **Dashboard Repository**: `D:\java_workspace\moonrise-dashboard` (The React Native Expo frontend project).
+- **Server Core Repository**: `<workspace>/moonrise-mc` (The main source tree containing Paper patches and build scripts).
+- **Main Working Directory**: `<workspace>/moonrise-server-run` (General directory for production builds and resources).
+- **Test Server Run Directory**: `<workspace>/moonrise-mc/test_server_run` (Used for localized testing of newly built paperclips).
+- **Dashboard Repository**: `<workspace>/moonrise-dashboard` (The React Native Expo frontend project).
 
 ## Build Quirks & Paperweight
 
