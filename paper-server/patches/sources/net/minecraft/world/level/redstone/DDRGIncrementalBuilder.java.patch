@@ -1,0 +1,347 @@
+--- /dev/null
++++ b/net/minecraft/world/level/redstone/DDRGIncrementalBuilder.java
+@@ -1,0 +_,344 @@
++package net.minecraft.world.level.redstone;
++
++import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
++import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
++import net.minecraft.core.BlockPos;
++import net.minecraft.core.Direction;
++import net.minecraft.world.level.Level;
++import net.minecraft.world.level.block.Block;
++import net.minecraft.world.level.block.Blocks;
++import net.minecraft.world.level.block.state.BlockState;
++import net.minecraft.server.region.VirtualThreadIODispatcher;
++
++import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
++import java.util.concurrent.CompletableFuture;
++import java.util.List;
++import java.util.ArrayList;
++
++public class DDRGIncrementalBuilder {
++    private final Level level;
++    private final DDRGRedstoneGraph graph;
++    
++    // Maps a BlockPos (as long) to its index in the DDRGRedstoneGraph SoA arrays
++    private final Long2IntOpenHashMap posToIndex;
++    
++    // Reverse map for quick removal
++    private long[] indexToPos;
++    
++    // Differential dataflow: track block positions that had an input change
++    private final LongLinkedOpenHashSet deltaQueue;
++    
++    // Union-Find parent map for dynamic clustering
++    private final Long2LongOpenHashMap parentMap;
++    private final it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap rankMap;
++
++    public DDRGIncrementalBuilder(Level level) {
++        this.level = level;
++        this.graph = new DDRGRedstoneGraph(256);
++        this.posToIndex = new Long2IntOpenHashMap();
++        this.posToIndex.defaultReturnValue(-1);
++        this.indexToPos = new long[256];
++        this.deltaQueue = new LongLinkedOpenHashSet();
++        this.parentMap = new Long2LongOpenHashMap();
++        this.parentMap.defaultReturnValue(Long.MIN_VALUE);
++        this.rankMap = new it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap();
++        this.rankMap.defaultReturnValue(0);
++    }
++
++    public DDRGRedstoneGraph getGraph() {
++        return graph;
++    }
++
++    public synchronized void onBlockChanged(BlockPos pos, BlockState oldState, BlockState newState) {
++        boolean wasRedstone = isRedstone(oldState);
++        boolean isRedstone = isRedstone(newState);
++
++        if (!wasRedstone && !isRedstone) {
++            return;
++        }
++
++        // Invalidate and recompile only the localized subgraph (depth=1)
++        recompileSubgraphAt(pos);
++        processDeltas();
++    }
++
++    public synchronized void onNeighborChanged(BlockPos pos, Block changedBlock) {
++        BlockState state = level.getBlockState(pos);
++        if (isRedstone(state)) {
++            // Queue for differential evaluation
++            deltaQueue.add(pos.asLong());
++            processDeltas();
++        }
++    }
++
++    private boolean isRedstone(BlockState state) {
++        Block block = state.getBlock();
++        return block == Blocks.REDSTONE_WIRE || block == Blocks.REPEATER || block == Blocks.COMPARATOR || state.isSignalSource();
++    }
++
++    private void recompileSubgraphAt(BlockPos start) {
++        BlockState state = level.getBlockState(start);
++        if (isRedstone(state)) {
++            updateNodeInGraph(start, state);
++        } else {
++            removeNodeFromGraph(start.asLong());
++        }
++
++        // Traverse only immediate neighbors to update their connection masks
++        for (Direction dir : Direction.values()) {
++            BlockPos neighbor = start.relative(dir);
++            BlockState neighborState = level.getBlockState(neighbor);
++            if (isRedstone(neighborState)) {
++                updateNodeInGraph(neighbor, neighborState);
++            }
++        }
++    }
++
++    private void updateNodeInGraph(BlockPos pos, BlockState state) {
++        long posLong = pos.asLong();
++        int index = posToIndex.get(posLong);
++        
++        byte power = calculatePower(pos, state);
++        long connections = calculateConnections(pos, state);
++        
++        int compressedPos = compressPos(pos);
++        
++        if (index == -1) {
++            index = graph.getSize();
++            graph.addNode(compressedPos, power, connections);
++            posToIndex.put(posLong, index);
++            ensureIndexCapacity(index);
++            indexToPos[index] = posLong;
++            
++            // Queue delta
++            deltaQueue.add(posLong);
++        } else {
++            // Check if connections changed
++            long oldConnections = graph.getConnectionMask(index);
++            if (oldConnections != connections) {
++                graph.setConnectionMask(index, connections);
++                deltaQueue.add(posLong);
++            }
++            
++            byte oldPower = graph.getPower(index);
++            if (oldPower != power) {
++                graph.setPower(index, power);
++                deltaQueue.add(posLong);
++            }
++        }
++    }
++    
++    private void removeNodeFromGraph(long posLong) {
++        int index = posToIndex.get(posLong);
++        if (index != -1) {
++            int lastIndex = graph.getSize() - 1;
++            long lastPosLong = indexToPos[lastIndex];
++            
++            graph.removeNode(index);
++            posToIndex.remove(posLong);
++            
++            if (index != lastIndex) {
++                posToIndex.put(lastPosLong, index);
++                indexToPos[index] = lastPosLong;
++            }
++        }
++    }
++
++    private int compressPos(BlockPos pos) {
++        return (pos.getX() & 0xF) | ((pos.getZ() & 0xF) << 4) | ((pos.getY() & 0x1FF) << 8);
++    }
++
++    private void ensureIndexCapacity(int size) {
++        if (size >= indexToPos.length) {
++            long[] newArray = new long[indexToPos.length * 2];
++            System.arraycopy(indexToPos, 0, newArray, 0, indexToPos.length);
++            indexToPos = newArray;
++        }
++    }
++
++    private void shrinkIndexCapacity() {
++        int targetLength = Math.max(256, Integer.highestOneBit(graph.getSize()) << 1);
++        if (indexToPos.length > targetLength * 2) {
++            long[] newArray = new long[targetLength];
++            System.arraycopy(indexToPos, 0, newArray, 0, graph.getSize());
++            indexToPos = newArray;
++        }
++    }
++
++    private byte calculatePower(BlockPos pos, BlockState state) {
++        if (state.getBlock() == Blocks.REDSTONE_WIRE) {
++            byte maxNeighborPower = 0;
++            long posLong = pos.asLong();
++            int index = posToIndex.get(posLong);
++            if (index != -1) {
++                long mask = graph.getConnectionMask(index);
++                Direction[] dirs = Direction.values();
++                for (int i = 0; i < dirs.length; i++) {
++                    if ((mask & (1L << i)) != 0) {
++                        BlockPos neighbor = pos.relative(dirs[i]);
++                        int neighborIndex = posToIndex.get(neighbor.asLong());
++                        if (neighborIndex != -1) {
++                            byte np = graph.getPower(neighborIndex);
++                            if (np > maxNeighborPower) {
++                                maxNeighborPower = np;
++                            }
++                        }
++                    }
++                }
++            }
++            return (byte) Math.max(0, maxNeighborPower - 1);
++        }
++        return (byte) level.getBestNeighborSignal(pos);
++    }
++
++    private long calculateConnections(BlockPos pos, BlockState state) {
++        // Simple adjacency bitmask: D, U, N, S, W, E
++        long mask = 0;
++        Direction[] dirs = Direction.values();
++        for (int i = 0; i < dirs.length; i++) {
++            BlockState neighbor = level.getBlockState(pos.relative(dirs[i]));
++            if (isRedstone(neighbor)) {
++                mask |= (1L << i);
++            }
++        }
++        return mask;
++    }
++
++    private long findRoot(long pos) {
++        long root = pos;
++        long parent;
++        while ((parent = parentMap.get(root)) != root) {
++            if (parent == Long.MIN_VALUE) break; // Fallback
++            root = parent;
++        }
++        
++        long curr = pos;
++        while (curr != root) {
++            long nxt = parentMap.get(curr);
++            parentMap.put(curr, root);
++            if (nxt == Long.MIN_VALUE) break;
++            curr = nxt;
++        }
++        return root;
++    }
++
++    private void union(long pos1, long pos2) {
++        long root1 = findRoot(pos1);
++        long root2 = findRoot(pos2);
++        if (root1 != root2) {
++            int rank1 = rankMap.get(root1);
++            int rank2 = rankMap.get(root2);
++            if (rank1 < rank2) {
++                parentMap.put(root1, root2);
++            } else if (rank1 > rank2) {
++                parentMap.put(root2, root1);
++            } else {
++                parentMap.put(root2, root1);
++                rankMap.put(root1, rank1 + 1);
++            }
++        }
++    }
++
++    private void buildUnionFind() {
++        parentMap.clear();
++        rankMap.clear();
++        int size = graph.getSize();
++        // Initialize
++        for (int i = 0; i < size; i++) {
++            long pos = indexToPos[i];
++            parentMap.put(pos, pos);
++        }
++        
++        // Union adjacent nodes
++        for (int i = 0; i < size; i++) {
++            long pos = indexToPos[i];
++            long mask = graph.getConnectionMask(i);
++            Direction[] dirs = Direction.values();
++            BlockPos bpos = BlockPos.of(pos);
++            for (int d = 0; d < dirs.length; d++) {
++                if ((mask & (1L << d)) != 0) {
++                    long neighborPos = bpos.relative(dirs[d]).asLong();
++                    if (posToIndex.containsKey(neighborPos)) {
++                        union(pos, neighborPos);
++                    }
++                }
++            }
++        }
++    }
++
++    public void processDeltas() {
++        if (deltaQueue.isEmpty()) return;
++
++        buildUnionFind();
++
++        Long2ObjectOpenHashMap<LongLinkedOpenHashSet> clusteredQueues = new Long2ObjectOpenHashMap<>();
++        
++        while (!deltaQueue.isEmpty()) {
++            long posLong = deltaQueue.removeFirstLong();
++            if (!posToIndex.containsKey(posLong)) continue;
++            long root = findRoot(posLong);
++            clusteredQueues.computeIfAbsent(root, k -> new LongLinkedOpenHashSet()).add(posLong);
++        }
++
++        List<CompletableFuture<Void>> futures = new ArrayList<>();
++        
++        for (LongLinkedOpenHashSet clusterQueue : clusteredQueues.values()) {
++            futures.add(VirtualThreadIODispatcher.dispatchRedstoneUpdate(() -> {
++                processCluster(clusterQueue);
++            }));
++        }
++        
++        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
++        deltaQueue.trim();
++        parentMap.trim();
++        rankMap.trim();
++        shrinkIndexCapacity();
++    }
++
++    private void processCluster(LongLinkedOpenHashSet queue) {
++        int maxIterations = 65536;
++        int iterations = 0;
++        
++        while (!queue.isEmpty() && iterations < maxIterations) {
++            LongLinkedOpenHashSet nextQueue = new LongLinkedOpenHashSet();
++            
++            while (!queue.isEmpty() && iterations < maxIterations) {
++                long posLong = queue.removeFirstLong();
++                iterations++;
++                int index = posToIndex.get(posLong);
++                if (index == -1) continue;
++                
++                BlockPos pos = BlockPos.of(posLong);
++                if (!level.isLoaded(pos)) continue; // Safe chunk checking
++                
++                BlockState state = level.getBlockState(pos);
++                
++                byte currentPowerInGraph = graph.getPower(index);
++                byte computedPower = calculatePower(pos, state);
++                
++                if (currentPowerInGraph != computedPower) {
++                    graph.setPower(index, computedPower);
++                    
++                    // Propagate to neighbors defined in the connection mask
++                    long mask = graph.getConnectionMask(index);
++                    Direction[] dirs = Direction.values();
++                    for (int i = 0; i < dirs.length; i++) {
++                        if ((mask & (1L << i)) != 0) {
++                            BlockPos neighbor = pos.relative(dirs[i]);
++                            if (posToIndex.containsKey(neighbor.asLong())) {
++                                nextQueue.add(neighbor.asLong());
++                            }
++                        }
++                    }
++                }
++            }
++            
++            queue.addAll(nextQueue);
++        }
++        
++        if (iterations >= maxIterations) {
++            queue.clear();
++        }
++    }
++}

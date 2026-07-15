@@ -1,0 +1,124 @@
+--- /dev/null
++++ b/net/minecraft/world/level/redstone/DDRGRedstoneGraph.java
+@@ -1,0 +_,121 @@
++package net.minecraft.world.level.redstone;
++
++import jdk.incubator.vector.ByteVector;
++import jdk.incubator.vector.VectorSpecies;
++import java.util.Arrays;
++
++/**
++ * Structure-of-Arrays (SoA) based Redstone Graph for optimized SIMD power propagation.
++ */
++public class DDRGRedstoneGraph {
++    private static final VectorSpecies<Byte> SPECIES = ByteVector.SPECIES_MAX;
++    private static final int DEFAULT_CAPACITY = 16;
++
++    private int[] nodePositions;
++    private byte[] powerLevels;
++    private long[] connectionMasks;
++    private int size;
++
++    public DDRGRedstoneGraph(int initialCapacity) {
++        int capacity = initialCapacity > 0 ? initialCapacity : DEFAULT_CAPACITY;
++        this.nodePositions = new int[capacity];
++        this.powerLevels = new byte[capacity];
++        this.connectionMasks = new long[capacity];
++        this.size = 0;
++    }
++
++    /**
++     * Adds a new redstone node to the graph.
++     */
++    public void addNode(int position, byte initialPower, long connectionMask) {
++        if (size == nodePositions.length) {
++            resize();
++        }
++        nodePositions[size] = position;
++        powerLevels[size] = initialPower;
++        connectionMasks[size] = connectionMask;
++        size++;
++    }
++
++    /**
++     * Removes a node at the specified index using swap-and-pop for O(1) removal.
++     */
++    public void removeNode(int index) {
++        if (index < 0 || index >= size) {
++            throw new IndexOutOfBoundsException("Index out of bounds: " + index);
++        }
++        int lastIndex = size - 1;
++        if (index != lastIndex) {
++            nodePositions[index] = nodePositions[lastIndex];
++            powerLevels[index] = powerLevels[lastIndex];
++            connectionMasks[index] = connectionMasks[lastIndex];
++        }
++        size--;
++    }
++
++    /**
++     * Clears the graph of all nodes without deallocating arrays.
++     */
++    public void clear() {
++        size = 0;
++    }
++
++    private void resize() {
++        int newCapacity = (nodePositions.length == 0) ? DEFAULT_CAPACITY : nodePositions.length * 2;
++        nodePositions = Arrays.copyOf(nodePositions, newCapacity);
++        powerLevels = Arrays.copyOf(powerLevels, newCapacity);
++        connectionMasks = Arrays.copyOf(connectionMasks, newCapacity);
++    }
++
++    /**
++     * Performs a vectorized SIMD pass to decay/propagate power levels across the entire graph.
++     * This processes elements in batches determined by the maximum hardware vector length.
++     */
++    public void propagate() {
++        int i = 0;
++        int loopBound = SPECIES.loopBound(size);
++
++        ByteVector decayAmount = ByteVector.broadcast(SPECIES, (byte) 1);
++        ByteVector zero = ByteVector.broadcast(SPECIES, (byte) 0);
++
++        for (; i < loopBound; i += SPECIES.length()) {
++            ByteVector powerVec = ByteVector.fromArray(SPECIES, powerLevels, i);
++            
++            // Example SIMD logic: subtract 1 from power level and clamp to 0 (decay)
++            ByteVector decayed = powerVec.sub(decayAmount).max(zero);
++            
++            decayed.intoArray(powerLevels, i);
++        }
++
++        // Handle the remainder in a scalar tail loop
++        for (; i < size; i++) {
++            if (powerLevels[i] > 0) {
++                powerLevels[i]--;
++            }
++        }
++    }
++
++    public int getSize() { 
++        return size; 
++    }
++
++    public void setPower(int index, byte power) {
++        powerLevels[index] = power;
++    }
++
++    public byte getPower(int index) {
++        return powerLevels[index];
++    }
++
++    public void setConnectionMask(int index, long mask) {
++        connectionMasks[index] = mask;
++    }
++
++    public long getConnectionMask(int index) {
++        return connectionMasks[index];
++    }
++
++    public int getNodePosition(int index) {
++        return nodePositions[index];
++    }
++}
