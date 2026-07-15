@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/level/block/ObserverBlock.java
 +++ b/net/minecraft/world/level/block/ObserverBlock.java
-@@ -51,8 +51,18 @@ public class ObserverBlock extends DirectionalBlock {
+@@ -51,8 +_,18 @@
      @Override
      protected void tick(final BlockState state, final ServerLevel level, final BlockPos pos, final RandomSource random) {
          if (state.getValue(POWERED)) {
@@ -19,7 +19,7 @@
              level.setBlock(pos, state.setValue(POWERED, true), Block.UPDATE_CLIENTS);
              level.scheduleTick(pos, this, 2);
          }
-@@ -85,11 +95,7 @@ public class ObserverBlock extends DirectionalBlock {
+@@ -85,11 +_,7 @@
      }
  
      protected void updateNeighborsInFront(final Level level, final BlockPos pos, final BlockState state) {

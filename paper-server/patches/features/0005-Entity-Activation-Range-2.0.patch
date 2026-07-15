@@ -354,7 +354,7 @@ index 0000000000000000000000000000000000000000..ce6b57eeeeb1bd652f4bb53c19dcfbc0
 +    }
 +}
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index 89da20b0682708ba8bfc0d10381eb9784d80c395..b5d63d7b848c11ed322d512adeee102886cbb6fd 100644
+index 0fabe7fe4d302695505bed2cef4ce580358b8b82..9fc39230f52f4cf6b44edd34aa9542b9d500538e 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -864,6 +864,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -462,7 +462,7 @@ index 0df8332933203a904bd9ef9efb3c9bce21e65441..1a502cbd8acea9420fa6dd8d716018b5
      public void tick() {
          super.tick();
 diff --git a/net/minecraft/world/entity/Entity.java b/net/minecraft/world/entity/Entity.java
-index 593265d78564b60bacbb4899f18a6e74bf56601d..84c664711658eb83b5ff9d4c8470fd8ec54a5473 100644
+index e5d56fdb5cfd4aa291dbdb879e478134a85c9beb..196a15d3761eab416cb519fd52c86cc100b8080a 100644
 --- a/net/minecraft/world/entity/Entity.java
 +++ b/net/minecraft/world/entity/Entity.java
 @@ -382,6 +382,15 @@ public abstract class Entity
@@ -521,7 +521,7 @@ index 593265d78564b60bacbb4899f18a6e74bf56601d..84c664711658eb83b5ff9d4c8470fd8e
              delta = this.maybeBackOffFromEdge(delta, moverType);
              Vec3 movement = this.collide(delta);
 diff --git a/net/minecraft/world/entity/LivingEntity.java b/net/minecraft/world/entity/LivingEntity.java
-index f62e535b62d249dd3be19d7c1b02fae8dad31c10..6eb95b979ffe37d78fd68eb57ebe71891beb0d28 100644
+index b9cb30a290cb91ac17099f251b9be4c593fb7703..358ff4330102a058c86d8209374d8cb9dd18b6ad 100644
 --- a/net/minecraft/world/entity/LivingEntity.java
 +++ b/net/minecraft/world/entity/LivingEntity.java
 @@ -3380,6 +3380,14 @@ public abstract class LivingEntity extends Entity implements Attackable, Waypoin
@@ -540,7 +540,7 @@ index f62e535b62d249dd3be19d7c1b02fae8dad31c10..6eb95b979ffe37d78fd68eb57ebe7189
      public void tick() {
          super.tick();
 diff --git a/net/minecraft/world/entity/Mob.java b/net/minecraft/world/entity/Mob.java
-index e63ac861b785cf3dccac25404454289c44b7ec9d..8b036640be655c65852e0862e30962e443d3024d 100644
+index c82e0e574fde7560ffaac7054f8a9501153e4757..ea144213f5ac2f813c9007113e4066a3295a7f76 100644
 --- a/net/minecraft/world/entity/Mob.java
 +++ b/net/minecraft/world/entity/Mob.java
 @@ -211,6 +211,20 @@ public abstract class Mob extends LivingEntity implements Targeting, EquipmentUs
@@ -817,23 +817,6 @@ index f46cca0467bb4da5511bc953ce5b43fa606bf978..445c5cafad71028171c1f26193966177
 +    // Paper end
 +
  }
-diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
-index cc492445307ddc08446484d272866f01646cf7b3..a5d46832d4f8a13b0bf67b523c21d5c3b44209a9 100644
---- a/net/minecraft/world/level/Level.java
-+++ b/net/minecraft/world/level/Level.java
-@@ -155,6 +155,12 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
-     @Nullable
-     public List<net.minecraft.world.entity.item.ItemEntity> captureDrops;
-     public final it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<SpawnCategory> ticksPerSpawnCategory = new it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap<>();
-+    // Paper start - EAR 2
-+    public int wakeupInactiveRemainingAnimals;
-+    public int wakeupInactiveRemainingFlying;
-+    public int wakeupInactiveRemainingMonsters;
-+    public int wakeupInactiveRemainingVillagers;
-+    // Paper end - EAR 2
-     public boolean populating;
-     public final org.spigotmc.SpigotWorldConfig spigotConfig; // Spigot
-     // Paper start - add paper world config
 diff --git a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java b/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java
 index ef78f286ca14512c3dfccdb8fb06ebe9affa1589..c5c0b01c41055a82e49c1546d4525da0acce13a4 100644
 --- a/net/minecraft/world/level/block/piston/PistonMovingBlockEntity.java

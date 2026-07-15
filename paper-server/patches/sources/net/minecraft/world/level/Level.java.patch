@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/level/Level.java
 +++ b/net/minecraft/world/level/Level.java
-@@ -87,11 +87,23 @@ import net.minecraft.world.level.storage.LevelData;
+@@ -87,11 +_,23 @@
  import net.minecraft.world.level.storage.WritableLevelData;
  import net.minecraft.world.phys.AABB;
  import net.minecraft.world.phys.Vec3;
@@ -25,7 +25,7 @@
      public static final Codec<ResourceKey<Level>> RESOURCE_KEY_CODEC = ResourceKey.codec(Registries.DIMENSION);
      public static final ResourceKey<Level> OVERWORLD = ResourceKey.create(Registries.DIMENSION, Identifier.withDefaultNamespace("overworld"));
      public static final ResourceKey<Level> NETHER = ResourceKey.create(Registries.DIMENSION, Identifier.withDefaultNamespace("the_nether"));
-@@ -110,6 +122,11 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -110,6 +_,11 @@
      protected final CollectingNeighborUpdater neighborUpdater;
      private final List<TickingBlockEntity> pendingBlockEntityTickers = Lists.newArrayList();
      private boolean tickingBlockEntities;
@@ -37,7 +37,7 @@
      public final Thread thread;
      private final boolean isDebug;
      private int skyDarken;
-@@ -119,7 +136,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -119,7 +_,7 @@
      public float rainLevel;
      protected float oThunderLevel;
      public float thunderLevel;
@@ -46,7 +46,7 @@
      @Deprecated
      private final RandomSource soundSeedGenerator = RandomSource.createThreadSafe();
      private final Holder<DimensionType> dimensionTypeRegistration;
-@@ -132,6 +149,685 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -132,6 +_,685 @@
      private final PalettedContainerFactory palettedContainerFactory;
      private long subTickCount;
  
@@ -732,7 +732,7 @@
      protected Level(
          final WritableLevelData levelData,
          final ResourceKey<Level> dimension,
-@@ -141,19 +837,92 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -141,19 +_,92 @@
          final boolean isDebug,
          final long biomeZoomSeed,
          final int maxChainedNeighborUpdates
@@ -780,6 +780,7 @@
 -        this.registryAccess = registryAccess;
          this.palettedContainerFactory = PalettedContainerFactory.create(registryAccess);
          this.damageSources = new DamageSources(registryAccess);
+-    }
 +        this.entityLookup = new ca.spottedleaf.moonrise.patches.chunk_system.level.entity.dfl.DefaultEntityLookup(this); // Paper - rewrite chunk system
 +        this.chunkPacketBlockController = this.paperConfig().anticheat.antiXray.enabled ? new io.papermc.paper.antixray.ChunkPacketBlockControllerAntiXray(this, executor) : io.papermc.paper.antixray.ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
 +    }
@@ -821,12 +822,12 @@
 +        }
 +
 +        return true;
-     }
++    }
 +    // Paper end - Cancel hit for vanished players
  
      @Override
      public boolean isClientSide() {
-@@ -165,8 +934,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -165,8 +_,15 @@
          return null;
      }
  
@@ -843,7 +844,7 @@
      }
  
      public boolean isInValidBounds(final BlockPos pos) {
-@@ -178,7 +954,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -178,7 +_,7 @@
      }
  
      private static boolean isInWorldBoundsHorizontal(final BlockPos pos) {
@@ -852,7 +853,7 @@
      }
  
      private static boolean isInValidBoundsHorizontal(final BlockPos pos) {
-@@ -191,15 +967,80 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -191,14 +_,79 @@
          return y < -20000000 || y >= 20000000;
      }
  
@@ -864,6 +865,7 @@
      @Override
 -    public LevelChunk getChunk(final int chunkX, final int chunkZ) {
 -        return (LevelChunk)this.getChunk(chunkX, chunkZ, ChunkStatus.FULL);
+-    }
 +    public final LevelChunk getChunk(final int chunkX, final int chunkZ) { // Paper - final to help inline
 +        // Paper start - Perf: make sure loaded chunks get the inlined variant of this function
 +        net.minecraft.server.level.ServerChunkCache cps = ((ServerLevel)this).getChunkSource();
@@ -880,8 +882,8 @@
 +    @Override
 +    public final ChunkAccess getChunkIfLoadedImmediately(int x, int z) {
 +        return ((ServerLevel)this).chunkSource.getChunkAtIfLoadedImmediately(x, z);
-     }
- 
++    }
++
 +    @Override
 +    @Nullable
 +    public final BlockState getBlockStateIfLoaded(BlockPos pos) {
@@ -932,11 +934,10 @@
 +        return this.getWorldBorder().isWithinBounds(pos) ? this.getBlockStateIfLoaded(pos) : null;
 +    }
 +    // Paper end
-+
+ 
      @Override
      public @Nullable ChunkAccess getChunk(final int chunkX, final int chunkZ, final ChunkStatus status, final boolean loadOrGenerate) {
-         ChunkAccess chunk = this.getChunkSource().getChunk(chunkX, chunkZ, status, loadOrGenerate);
-@@ -217,6 +1058,22 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -217,6 +_,22 @@
  
      @Override
      public boolean setBlock(final BlockPos pos, final BlockState blockState, @Block.UpdateFlags final int updateFlags, final int updateLimit) {
@@ -959,7 +960,7 @@
          if (!this.isInValidBounds(pos)) {
              return false;
          }
-@@ -227,13 +1084,36 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -227,13 +_,36 @@
  
          LevelChunk chunk = this.getChunkAt(pos);
          Block block = blockState.getBlock();
@@ -997,7 +998,7 @@
              if (oldState != newState) {
                  this.setBlocksDirty(pos, oldState, newState);
              }
-@@ -260,10 +1140,64 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -260,9 +_,63 @@
  
              this.updatePOIOnBlockStateChange(pos, oldState, newState);
          }
@@ -1018,7 +1019,7 @@
  
          return true;
      }
- 
++
 +    // CraftBukkit start - Split off from above in order to directly send client and physic updates
 +    public void notifyAndUpdatePhysics(BlockPos pos, LevelChunk chunk, BlockState oldState, BlockState blockState, BlockState newState, @Block.UpdateFlags int updateFlags, int updateLimit) {
 +        if (newState == blockState) {
@@ -1058,11 +1059,10 @@
 +        }
 +    }
 +    // CraftBukkit end
-+
+ 
      public void updatePOIOnBlockStateChange(final BlockPos pos, final BlockState oldState, final BlockState newState) {
      }
- 
-@@ -274,20 +1208,38 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -274,20 +_,38 @@
      }
  
      @Override
@@ -1105,7 +1105,7 @@
          }
  
          boolean destroyed = this.setBlock(pos, fluidState.createLegacyBlock(), Block.UPDATE_ALL, updateLimit);
-@@ -319,11 +1271,31 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -319,11 +_,31 @@
      }
  
      public void neighborChanged(final BlockPos pos, final Block changedBlock, final @Nullable Orientation orientation) {
@@ -1137,7 +1137,7 @@
      }
  
      @Override
-@@ -361,11 +1333,19 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -361,11 +_,19 @@
  
      @Override
      public BlockState getBlockState(final BlockPos pos) {
@@ -1158,7 +1158,7 @@
          return chunk.getBlockState(pos);
      }
  
-@@ -525,6 +1505,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -525,6 +_,7 @@
      }
  
      public void addBlockEntityTicker(final TickingBlockEntity ticker) {
@@ -1166,7 +1166,7 @@
          (this.tickingBlockEntities ? this.pendingBlockEntityTickers : this.blockEntityTickers).add(ticker);
      }
  
-@@ -535,18 +1516,29 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -535,18 +_,29 @@
              this.pendingBlockEntityTickers.clear();
          }
  
@@ -1200,7 +1200,7 @@
          this.tickingBlockEntities = false;
      }
  
-@@ -554,13 +1546,32 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -554,12 +_,31 @@
          try {
              tick.accept(entity);
          } catch (Throwable t) {
@@ -1208,16 +1208,18 @@
 -            CrashReportCategory category = report.addCategory("Entity being ticked");
 -            entity.fillCrashReportCategory(category);
 -            throw new ReportedException(report);
+-        }
+-    }
 +            // Paper start - Prevent block entity and entity crashes
 +            final String msg = String.format("Entity threw exception at %s:%s,%s,%s", io.papermc.paper.util.MCUtil.getLevelName(entity.level()), entity.getX(), entity.getY(), entity.getZ());
 +            MinecraftServer.LOGGER.error(msg, t);
 +            getCraftServer().getPluginManager().callEvent(new com.destroystokyo.paper.event.server.ServerExceptionEvent(new com.destroystokyo.paper.exception.ServerInternalException(msg, t))); // Paper - ServerExceptionEvent
 +            entity.discard(org.bukkit.event.entity.EntityRemoveEvent.Cause.DISCARD);
 +            // Paper end - Prevent block entity and entity crashes
-         }
++        }
 +        this.moonrise$midTickTasks(); // Paper - rewrite chunk system
-     }
- 
++    }
++
 +    // Paper start - Option to prevent armor stands from doing entity lookups
 +    @Override
 +    public boolean noCollision(@Nullable Entity entity, AABB box) {
@@ -1233,11 +1235,10 @@
 +        // Paper end - optimise collisions
 +    }
 +    // Paper end - Option to prevent armor stands from doing entity lookups
-+
+ 
      public boolean shouldTickDeath(final Entity entity) {
          return true;
-     }
-@@ -693,10 +1704,16 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -693,10 +_,16 @@
  
      @Override
      public @Nullable BlockEntity getBlockEntity(final BlockPos pos) {
@@ -1255,7 +1256,7 @@
                  ? null
                  : this.getChunkAt(pos).getBlockEntity(pos, LevelChunk.EntityCreationType.IMMEDIATE);
          }
-@@ -705,6 +1722,12 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -705,6 +_,12 @@
      public void setBlockEntity(final BlockEntity blockEntity) {
          BlockPos pos = blockEntity.getBlockPos();
          if (this.isInValidBounds(pos)) {
@@ -1268,7 +1269,7 @@
              this.getChunkAt(pos).addAndRegisterBlockEntity(blockEntity);
          }
      }
-@@ -770,20 +1793,15 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -770,20 +_,15 @@
      @Override
      public List<Entity> getEntities(final @Nullable Entity except, final AABB bb, final Predicate<? super Entity> selector) {
          Profiler.get().incrementCounter("getEntities");
@@ -1278,17 +1279,19 @@
 -                output.add(entity);
 -            }
 -        });
-+        // Paper start - rewrite chunk system
-+        final List<Entity> ret = new java.util.ArrayList<>();
- 
+-
 -        for (EnderDragonPart dragonPart : this.dragonParts()) {
 -            if (dragonPart != except && dragonPart.parentMob != except && selector.test(dragonPart) && bb.intersects(dragonPart.getBoundingBox())) {
 -                output.add(dragonPart);
 -            }
 -        }
-+        ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().getEntities(except, bb, ret, selector);
- 
+-
 -        return output;
++        // Paper start - rewrite chunk system
++        final List<Entity> ret = new java.util.ArrayList<>();
++
++        ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().getEntities(except, bb, ret, selector);
++
 +        ca.spottedleaf.moonrise.common.PlatformHooks.get().addToGetEntities((Level)(Object)this, except, bb, selector, ret);
 +
 +        return ret;
@@ -1296,7 +1299,7 @@
      }
  
      @Override
-@@ -799,33 +1817,94 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -799,33 +_,94 @@
          this.getEntities(type, bb, selector, output, Integer.MAX_VALUE);
      }
  
@@ -1314,6 +1317,23 @@
 -                if (output.size() >= maxResults) {
 -                    return AbortableIterationConsumer.Continuation.ABORT;
 -                }
+-            }
+-
+-            if (e instanceof EnderDragon enderDragon) {
+-                for (EnderDragonPart subEntity : enderDragon.getSubEntities()) {
+-                    T castSubPart = type.tryCast(subEntity);
+-                    if (castSubPart != null && selector.test(castSubPart)) {
+-                        output.add(castSubPart);
+-                        if (output.size() >= maxResults) {
+-                            return AbortableIterationConsumer.Continuation.ABORT;
+-                        }
+-                    }
+-                }
+-            }
+-
+-            return AbortableIterationConsumer.Continuation.CONTINUE;
+-        });
+-    }
 +
 +        if (entityTypeTest instanceof net.minecraft.world.entity.EntityType<T> byType) {
 +            if (maxCount != Integer.MAX_VALUE) {
@@ -1324,18 +1344,9 @@
 +                ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().getEntities(byType, boundingBox, into, predicate);
 +                ca.spottedleaf.moonrise.common.PlatformHooks.get().addToGetEntities((Level)(Object)this, entityTypeTest, boundingBox, predicate, into, maxCount);
 +                return;
-             }
++            }
 +        }
- 
--            if (e instanceof EnderDragon enderDragon) {
--                for (EnderDragonPart subEntity : enderDragon.getSubEntities()) {
--                    T castSubPart = type.tryCast(subEntity);
--                    if (castSubPart != null && selector.test(castSubPart)) {
--                        output.add(castSubPart);
--                        if (output.size() >= maxResults) {
--                            return AbortableIterationConsumer.Continuation.ABORT;
--                        }
--                    }
++
 +        if (entityTypeTest == null) {
 +            if (maxCount != Integer.MAX_VALUE) {
 +                ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().getEntities((Entity)null, boundingBox, (List)into, (Predicate)predicate, maxCount);
@@ -1360,7 +1371,7 @@
 +                final T casted = entityTypeTest.tryCast(obj);
 +                if (casted == null) {
 +                    return false;
-                 }
++                }
 +
 +                return predicate.test(casted);
 +            };
@@ -1375,7 +1386,7 @@
 +                ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().getEntities((Entity)null, boundingBox, (List)into, (Predicate)modifiedPredicate);
 +                ca.spottedleaf.moonrise.common.PlatformHooks.get().addToGetEntities((Level)(Object)this, entityTypeTest, boundingBox, predicate, into, maxCount);
 +                return;
-             }
++            }
 +        } else {
 +            if (maxCount != Integer.MAX_VALUE) {
 +                ((ca.spottedleaf.moonrise.patches.chunk_system.level.ChunkSystemLevel)this).moonrise$getEntityLookup().getEntities(base, null, boundingBox, (List)into, (Predicate)modifiedPredicate, maxCount);
@@ -1388,9 +1399,7 @@
 +            }
 +        }
 +    }
- 
--            return AbortableIterationConsumer.Continuation.CONTINUE;
--        });
++
 +    public org.bukkit.entity.Entity[] getChunkEntities(int chunkX, int chunkZ) {
 +        ca.spottedleaf.moonrise.patches.chunk_system.level.entity.ChunkEntitySlices slices = ((ServerLevel)this).moonrise$getEntityLookup().getChunk(chunkX, chunkZ);
 +        if (slices == null) {
@@ -1406,12 +1415,12 @@
 +        }
 +
 +        return ret.toArray(new org.bukkit.entity.Entity[0]);
-     }
++    }
 +    // Paper end - rewrite chunk system
  
      public <T extends Entity> boolean hasEntities(final EntityTypeTest<Entity, T> type, final AABB bb, final Predicate<? super T> selector) {
          Profiler.get().incrementCounter("hasEntities");
-@@ -1111,12 +2190,24 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -1111,12 +_,24 @@
          return this.palettedContainerFactory;
      }
  
@@ -1437,7 +1446,7 @@
  
          public static final Codec<Level.ExplosionInteraction> CODEC = StringRepresentable.fromEnum(Level.ExplosionInteraction::values);
          private final String id;
-@@ -1130,4 +2221,10 @@ public abstract class Level implements LevelAccessor, AutoCloseable {
+@@ -1130,4 +_,10 @@
              return this.id;
          }
      }

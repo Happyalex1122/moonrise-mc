@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/level/block/RedStoneWireBlock.java
 +++ b/net/minecraft/world/level/block/RedStoneWireBlock.java
-@@ -269,6 +269,56 @@ public class RedStoneWireBlock extends Block {
+@@ -269,6 +_,56 @@
          return relativeState.isFaceSturdy(level, relativePos, Direction.UP) || relativeState.is(Blocks.HOPPER);
      }
  
@@ -57,7 +57,7 @@
      private void updatePowerStrength(
          final Level level,
          final BlockPos pos,
-@@ -303,8 +353,8 @@ public class RedStoneWireBlock extends Block {
+@@ -303,8 +_,8 @@
      @Override
      protected void onPlace(final BlockState state, final Level level, final BlockPos pos, final BlockState oldState, final boolean movedByPiston) {
          if (!oldState.is(state.getBlock()) && !level.isClientSide()) {
@@ -68,7 +68,7 @@
              for (Direction direction : Direction.Plane.VERTICAL) {
                  level.updateNeighborsAt(pos.relative(direction), this);
              }
-@@ -320,7 +370,8 @@ public class RedStoneWireBlock extends Block {
+@@ -320,7 +_,8 @@
                  level.updateNeighborsAt(pos.relative(direction), this);
              }
  
@@ -78,7 +78,7 @@
              this.updateNeighborsOfNeighboringWires(level, pos);
          }
      }
-@@ -345,14 +396,11 @@ public class RedStoneWireBlock extends Block {
+@@ -345,14 +_,11 @@
          final BlockState state, final Level level, final BlockPos pos, final Block block, final @Nullable Orientation orientation, final boolean movedByPiston
      ) {
          if (!level.isClientSide()) {

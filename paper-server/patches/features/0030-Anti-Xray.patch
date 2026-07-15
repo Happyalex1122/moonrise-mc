@@ -155,7 +155,7 @@ index a94e6ca1d396b6b0781de5d550c4a804274ee003..a1018e9ca9dfb978d6e6633577abd7d5
  
      private ClientboundLevelChunkWithLightPacket(final RegistryFriendlyByteBuf input) {
 diff --git a/net/minecraft/server/level/ServerLevel.java b/net/minecraft/server/level/ServerLevel.java
-index ac3c00ccb3025cd45beb3c6b96f11dad38f78366..a9a00f9be49344b17b27f64834102df3a323f03b 100644
+index 49f688e3536fe4fdb052bbfeeec36b5b8666b9b1..229ff740e0418a05d824a67401ae6f105b4c3642 100644
 --- a/net/minecraft/server/level/ServerLevel.java
 +++ b/net/minecraft/server/level/ServerLevel.java
 @@ -631,7 +631,7 @@ public class ServerLevel extends Level implements WorldGenLevel, ServerEntityGet
@@ -168,7 +168,7 @@ index ac3c00ccb3025cd45beb3c6b96f11dad38f78366..a9a00f9be49344b17b27f64834102df3
          this.weatherData.setLevel(this);
          this.typeKey = typeKey;
 diff --git a/net/minecraft/server/level/ServerPlayerGameMode.java b/net/minecraft/server/level/ServerPlayerGameMode.java
-index 837f8de90fddb5f458d44ee42ea11557463454c3..515dfa9c71333f68d6a42535f98977b5681eb407 100644
+index 42d6ea16673fa00447fa46514c76036ee49cbc60..45cbc7913546fe7294cf1ac4a885e6ca68dcbd7f 100644
 --- a/net/minecraft/server/level/ServerPlayerGameMode.java
 +++ b/net/minecraft/server/level/ServerPlayerGameMode.java
 @@ -320,6 +320,7 @@ public class ServerPlayerGameMode {
@@ -196,7 +196,7 @@ index ec40f02032f965f548b0c0a29aa9d9bbad6f439b..373da9d604cfb1614a0618d856aefd2b
          if (io.papermc.paper.event.packet.PlayerChunkLoadEvent.getHandlerList().getRegisteredListeners().length > 0) {
              new io.papermc.paper.event.packet.PlayerChunkLoadEvent(new org.bukkit.craftbukkit.CraftChunk(chunk), connection.getPlayer().getBukkitEntity()).callEvent();
 diff --git a/net/minecraft/server/players/PlayerList.java b/net/minecraft/server/players/PlayerList.java
-index bab8c73be9537a1d531871b1b72bed87d2e0956e..02d19fc610e738f5ed12c23ab92bbdcbabaeced3 100644
+index 3c38b8cadcab6575fca0b7c3cf61287c3793f00f..5bea5dcdaf8ee0a38cd8587a55845e940d8f4cac 100644
 --- a/net/minecraft/server/players/PlayerList.java
 +++ b/net/minecraft/server/players/PlayerList.java
 @@ -330,7 +330,7 @@ public abstract class PlayerList {
@@ -208,44 +208,6 @@ index bab8c73be9537a1d531871b1b72bed87d2e0956e..02d19fc610e738f5ed12c23ab92bbdcb
              );
          }
          // Paper end - Send empty chunk
-diff --git a/net/minecraft/world/level/Level.java b/net/minecraft/world/level/Level.java
-index 5a5f7cbc0217ab7aa034698802f634d149662da1..f4302e835fa9684d0fc7d6b65075ec3ec40f8f9f 100644
---- a/net/minecraft/world/level/Level.java
-+++ b/net/minecraft/world/level/Level.java
-@@ -145,6 +145,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
-     private long subTickCount;
- 
-     // CraftBukkit start
-+    public final io.papermc.paper.antixray.ChunkPacketBlockController chunkPacketBlockController; // Paper - Anti-Xray
-     private final CraftWorld world;
-     public org.bukkit.generator.@Nullable ChunkGenerator generator;
- 
-@@ -836,7 +837,8 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
-         org.bukkit.generator.@Nullable BiomeProvider biomeProvider, // Paper
-         org.bukkit.World.Environment environment, // Paper
-         java.util.function.Function<org.spigotmc.SpigotWorldConfig, // Spigot - create per world config
--        io.papermc.paper.configuration.WorldConfiguration> paperWorldConfigCreator // Paper - create paper world config
-+        io.papermc.paper.configuration.WorldConfiguration> paperWorldConfigCreator, // Paper - create paper world config
-+        java.util.concurrent.Executor executor // Paper - Anti-Xray
-     ) {
-         // Paper start - getblock optimisations - cache world height/sections
-         final DimensionType dimType = dimensionTypeRegistration.value();
-@@ -871,6 +873,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
-         this.palettedContainerFactory = PalettedContainerFactory.create(registryAccess);
-         this.damageSources = new DamageSources(registryAccess);
-         this.entityLookup = new ca.spottedleaf.moonrise.patches.chunk_system.level.entity.dfl.DefaultEntityLookup(this); // Paper - rewrite chunk system
-+        this.chunkPacketBlockController = this.paperConfig().anticheat.antiXray.enabled ? new io.papermc.paper.antixray.ChunkPacketBlockControllerAntiXray(this, executor) : io.papermc.paper.antixray.ChunkPacketBlockController.NO_OPERATION_INSTANCE; // Paper - Anti-Xray
-     }
- 
-     // Paper start - Cancel hit for vanished players
-@@ -1088,6 +1091,7 @@ public abstract class Level implements LevelAccessor, AutoCloseable, ca.spottedl
-         }
-         // CraftBukkit end - capture blockstates
-         BlockState oldState = chunk.setBlockState(pos, blockState, updateFlags);
-+        this.chunkPacketBlockController.onBlockChange(this, pos, blockState, oldState, updateFlags, updateLimit); // Paper - Anti-Xray
-         if (oldState == null) {
-             // CraftBukkit start - remove blockstate if failed (or the same)
-             if (this.captureBlockStates && captured) {
 diff --git a/net/minecraft/world/level/chunk/ChunkAccess.java b/net/minecraft/world/level/chunk/ChunkAccess.java
 index c974b1c276d29610cb59566afaad19f5bcf0c602..c73b9871faa87493e081cb54e1bf1dce487359c6 100644
 --- a/net/minecraft/world/level/chunk/ChunkAccess.java
@@ -273,7 +235,7 @@ index c974b1c276d29610cb59566afaad19f5bcf0c602..c73b9871faa87493e081cb54e1bf1dce
          }
      }
 diff --git a/net/minecraft/world/level/chunk/LevelChunk.java b/net/minecraft/world/level/chunk/LevelChunk.java
-index 536c24ec46bdf571637376728aee06755a6256ef..b381c4d5a8b981f34852d029bbe46374d24f7879 100644
+index 1b364f99d728e177e7d4b5b706690a0b1c324fa8..a9d781e2fcac4e2426b0e35e46bbc10c540f9fd9 100644
 --- a/net/minecraft/world/level/chunk/LevelChunk.java
 +++ b/net/minecraft/world/level/chunk/LevelChunk.java
 @@ -151,7 +151,7 @@ public class LevelChunk extends ChunkAccess implements DebugValueSource, ca.spot

@@ -1,6 +1,6 @@
 --- a/net/minecraft/world/level/block/DiodeBlock.java
 +++ b/net/minecraft/world/level/block/DiodeBlock.java
-@@ -57,8 +57,18 @@ public abstract class DiodeBlock extends HorizontalDirectionalBlock {
+@@ -57,8 +_,18 @@
              boolean on = state.getValue(POWERED);
              boolean shouldTurnOn = this.shouldTurnOn(level, pos, state);
              if (on && !shouldTurnOn) {
@@ -19,7 +19,7 @@
                  level.setBlock(pos, state.setValue(POWERED, true), Block.UPDATE_CLIENTS);
                  if (!shouldTurnOn) {
                      level.scheduleTick(pos, this, this.getDelay(state), TickPriority.VERY_HIGH);
-@@ -85,16 +95,14 @@ public abstract class DiodeBlock extends HorizontalDirectionalBlock {
+@@ -85,16 +_,14 @@
      protected void neighborChanged(
          final BlockState state, final Level level, final BlockPos pos, final Block block, final @Nullable Orientation orientation, final boolean movedByPiston
      ) {
@@ -38,7 +38,7 @@
          }
      }
  
-@@ -176,11 +184,7 @@ public abstract class DiodeBlock extends HorizontalDirectionalBlock {
+@@ -176,11 +_,7 @@
      }
  
      protected void updateNeighborsInFront(final Level level, final BlockPos pos, final BlockState state) {
