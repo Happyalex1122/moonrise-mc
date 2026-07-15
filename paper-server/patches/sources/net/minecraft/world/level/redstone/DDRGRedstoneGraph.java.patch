@@ -1,7 +1,6 @@
-new file mode 100644
---- a/net/minecraft/world/level/redstone/DDRGRedstoneGraph.java
+--- /dev/null
 +++ b/net/minecraft/world/level/redstone/DDRGRedstoneGraph.java
-@@ -0,0 +1,121 @@
+@@ -1,0 +_,121 @@
 +package net.minecraft.world.level.redstone;
 +
 +import jdk.incubator.vector.ByteVector;

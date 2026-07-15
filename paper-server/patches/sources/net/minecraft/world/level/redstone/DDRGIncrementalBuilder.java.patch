@@ -1,7 +1,6 @@
-new file mode 100644
---- a/net/minecraft/world/level/redstone/DDRGIncrementalBuilder.java
+--- /dev/null
 +++ b/net/minecraft/world/level/redstone/DDRGIncrementalBuilder.java
-@@ -0,0 +1,344 @@
+@@ -1,0 +_,344 @@
 +package net.minecraft.world.level.redstone;
 +
 +import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
