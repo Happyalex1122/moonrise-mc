@@ -295,6 +295,7 @@ fun TaskContainer.registerRunTask(
 }
 
 tasks.registerRunTask("runServer") {
+    jvmArgs("--enable-preview", "--add-modules=jdk.incubator.vector")
     description = "Spin up a test server from the Mojang mapped server jar"
     classpath(tasks.jar)
     classpath(configurations.runtimeClasspath)
