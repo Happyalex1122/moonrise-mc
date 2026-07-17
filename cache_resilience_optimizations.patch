@@ -1,0 +1,17 @@
+--- CACHE RESILIENCE OPTIMIZATION PATCH ---
+Date: 2026-07-17
+Description: ExplosionBlockCache ThreadLocal Object Pool + PathTypeCache AtomicReferenceArray thread-safety
+
+Files modified:
+  1. paper-server/src/minecraft/java/ca/spottedleaf/moonrise/patches/collisions/ExplosionBlockCache.java
+  2. paper-server/src/minecraft/java/net/minecraft/world/level/ServerExplosion.java
+  3. paper-server/src/minecraft/java/net/minecraft/world/level/pathfinder/PathTypeCache.java
+
+=== FILE 1: ExplosionBlockCache.java ===
+[Full replacement - see file at path above]
+
+=== FILE 2: ServerExplosion.java ===
+[Modified: getOrCacheExplosionBlock uses pool, explode() has try-finally cleanup]
+
+=== FILE 3: PathTypeCache.java ===
+[Full replacement - see file at path above]
