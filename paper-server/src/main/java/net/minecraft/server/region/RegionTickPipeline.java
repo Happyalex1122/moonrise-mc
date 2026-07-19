@@ -124,6 +124,16 @@ public class RegionTickPipeline {
             grid.updateEntity(entity);
         }
 
+        // Fix #24: Pre-compute overcrowded status sequentially (grid is not thread-safe).
+        // isOvercrowded() reads from non-thread-safe Long2ObjectOpenHashMap; must NOT be called
+        // from inside ForkJoinTask parallel batches.
+        java.util.Set<Entity> overcrowdedEntities = new java.util.HashSet<>();
+        for (Entity entity : regionEntities) {
+            if (grid.isOvercrowded(entity)) {
+                overcrowdedEntities.add(entity);
+            }
+        }
+
         // Work-Stealing Parallelization for large entity counts
         int BATCH_SIZE = 256;
         if (regionEntities.size() > 500) {
@@ -134,13 +144,13 @@ public class RegionTickPipeline {
                 tasks.add(new java.util.concurrent.RecursiveAction() {
                     @Override
                     protected void compute() {
-                        processEntityBatch(batch, grid, queues, level, region);
+                        processEntityBatch(batch, overcrowdedEntities, queues, level, region);
                     }
                 });
             }
             ForkJoinTask.invokeAll(tasks);
         } else {
-            processEntityBatch(regionEntities, grid, queues, level, region);
+            processEntityBatch(regionEntities, overcrowdedEntities, queues, level, region);
         }
 
         // Sequential Grid Cleanup
@@ -157,7 +167,7 @@ public class RegionTickPipeline {
         }
     }
 
-    private void processEntityBatch(List<Entity> batch, SpatialHashGrid grid, RegionIntentQueues queues, ServerLevel level, RegionManager.Region region) {
+    private void processEntityBatch(List<Entity> batch, java.util.Set<Entity> overcrowdedEntities, RegionIntentQueues queues, ServerLevel level, RegionManager.Region region) {
         for (Entity entity : batch) {
             try {
                 if (entity.isAlive()) {
@@ -168,7 +178,9 @@ public class RegionTickPipeline {
                         continue;
                     }
 
-                    if (!isPlayer && grid.isOvercrowded(entity)) {
+                    // Fix #24: Use pre-computed overcrowded set (thread-safe) instead of
+                    // calling grid.isOvercrowded() directly from parallel context.
+                    if (!isPlayer && overcrowdedEntities.contains(entity)) {
                         continue;
                     }
 
