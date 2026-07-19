@@ -14,6 +14,7 @@ import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Set;
 import java.util.Iterator;
+import java.util.Map.Entry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
 
@@ -28,7 +29,10 @@ public class AsyncEntityDB {
             }
     );
             
-    private static final Set<UUID> DIRTY_SET = ConcurrentHashMap.newKeySet();
+    // Fix #22: Store EntityRecord directly in dirty map to prevent data loss on LRU eviction.
+    // If an entity is evicted from the 500k-entry LRU cache before flush, the dirty map
+    // still holds the record that needs to be persisted to LMDB.
+    private static final ConcurrentHashMap<UUID, EntityRecord> DIRTY_MAP = new ConcurrentHashMap<>();
     private static final Thread WORKER;
 
     private static LmdbBindings.Env env;
@@ -151,7 +155,7 @@ public class AsyncEntityDB {
                     
                     EntityRecord record = new EntityRecord(chunkX, chunkZ, nbt);
                     CACHE.put(uuid, record);
-                    DIRTY_SET.add(uuid);
+                    DIRTY_MAP.put(uuid, record);
                     count++;
                 } catch (java.io.EOFException e) {
                     break;
@@ -166,15 +170,15 @@ public class AsyncEntityDB {
 
     public static void saveEntity(UUID uuid, int chunkX, int chunkZ, CompoundTag nbt) {
         EntityRecord record = new EntityRecord(chunkX, chunkZ, nbt);
-        CACHE.put(uuid, record); // RAM cache updated immediately
-        DIRTY_SET.add(uuid);     // Mark as dirty
+        CACHE.put(uuid, record);     // RAM cache updated immediately
+        DIRTY_MAP.put(uuid, record); // Mark as dirty with the record itself (fix #22)
         
         // Non-blocking asynchronous WAL append
         WAL_QUEUE.offer(new SaveTask(uuid, chunkX, chunkZ, nbt));
     }
 
     public static void flush() {
-        if (!initialized || DIRTY_SET.isEmpty()) return;
+        if (!initialized || DIRTY_MAP.isEmpty()) return;
         
         File flushingWal = new File("entities_wal_flushing.dat");
         File currentWal = new File("entities_wal.dat");
@@ -195,15 +199,15 @@ public class AsyncEntityDB {
             }
         }
 
+        // Fix #22: Drain the DIRTY_MAP atomically. Each entry holds the EntityRecord directly,
+        // so data is never lost even if the LRU cache already evicted the entity.
         List<SaveTask> batch = new ArrayList<>();
-        Iterator<UUID> it = DIRTY_SET.iterator();
+        Iterator<Entry<UUID, EntityRecord>> it = DIRTY_MAP.entrySet().iterator();
         while (it.hasNext()) {
-            UUID uuid = it.next();
-            EntityRecord record = CACHE.get(uuid);
-            if (record != null) {
-                batch.add(new SaveTask(uuid, record.chunkX(), record.chunkZ(), record.nbt()));
-            }
-            it.remove(); // Remove from dirty set
+            Entry<UUID, EntityRecord> entry = it.next();
+            EntityRecord record = entry.getValue();
+            batch.add(new SaveTask(entry.getKey(), record.chunkX(), record.chunkZ(), record.nbt()));
+            it.remove();
         }
         
         if (!batch.isEmpty()) {

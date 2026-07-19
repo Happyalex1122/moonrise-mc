@@ -3,7 +3,7 @@ package net.minecraft.server.region;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList;
 
 // NMS/Bukkit Imports for priority filtering
 import net.minecraft.world.entity.Entity;
@@ -42,8 +42,9 @@ public class AdaptiveTPSManager {
     private static final ThreadLocal<Long> localPanicStartTime = ThreadLocal.withInitial(() -> 0L);
     private static final ThreadLocal<Long> localTickStartTime = ThreadLocal.withInitial(() -> 0L);
 
-    // Cache for fast proximity checks without querying the world repeatedly
-    private static final List<double[]> cachedPlayerPositions = new CopyOnWriteArrayList<>();
+    // Fix #23: Use volatile reference instead of mutable CopyOnWriteArrayList.
+    // Readers always see a fully-built snapshot; no window where the list is empty mid-update.
+    private static volatile List<double[]> cachedPlayerPositions = List.of();
 
     private static long panicStartTime = 0L;
     private static long lastPrintTime = 0L;
@@ -124,15 +125,17 @@ public class AdaptiveTPSManager {
     public static void incrementTick() {
         currentTickId.incrementAndGet();
         
-        // Update player positions once per tick if we are in panic mode (to save overhead)
+        // Fix #23: Build new list first, then atomically publish via volatile write.
+        // Avoids the clear() -> add() window where concurrent readers see an empty list.
         if (panicMode.get()) {
             try {
-                cachedPlayerPositions.clear();
                 if (Bukkit.getServer() != null) {
+                    List<double[]> newPositions = new ArrayList<>();
                     for (Player p : Bukkit.getOnlinePlayers()) {
                         org.bukkit.Location loc = p.getLocation();
-                        cachedPlayerPositions.add(new double[]{loc.getX(), loc.getY(), loc.getZ()});
+                        newPositions.add(new double[]{loc.getX(), loc.getY(), loc.getZ()});
                     }
+                    cachedPlayerPositions = newPositions; // atomic volatile write
                 }
             } catch (Exception e) {
                 // Ignore if Bukkit not ready

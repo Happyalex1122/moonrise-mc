@@ -4,8 +4,11 @@ Moonrise-MC features a wide array of engine-level optimizations spanning mechani
 
 ## Async Pathfinding
 
-Mob pathfinding is notoriously expensive on the main server thread. In Moonrise-MC, `PathFinder.findPath` operates entirely on a dedicated background thread pool named `ASYNC_PATHFINDER_EXECUTOR`.
-The `PathNavigation` class has been heavily refactored to seamlessly return futures and handle internal ticking without blocking the main server thread, significantly reducing mob-induced TPS drops.
+Mob pathfinding is one of the most CPU-intensive operations on the main server thread. Moonrise-MC targets full async pathfinding as a staged rollout:
+
+**Current (v1.1.6):** `PathTypeCache` has been made fully thread-safe using `AtomicReferenceArray<CacheEntry>` with `getOpaque`/`setOpaque` for lock-free reads and `compareAndSet` for safe invalidation. This is a prerequisite for background-thread pathfinding and eliminates data races in the cache layer.
+
+**Planned:** A dedicated `ASYNC_PATHFINDER_EXECUTOR` background thread pool will be wired to `PathFinder.findPath`, with `PathNavigation` refactored to return futures seamlessly without blocking the main server thread.
 
 ## Java Vector API (SIMD)
 

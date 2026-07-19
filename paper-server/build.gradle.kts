@@ -303,11 +303,13 @@ tasks.registerRunTask("runServer") {
 
 tasks.registerRunTask("runDevServer") {
     description = "Spin up a test server without assembling a jar"
+    jvmArgs("--enable-preview", "--add-modules=jdk.incubator.vector") // Fix #19: Vector API requires incubator module
     classpath(sourceSets.main.map { it.runtimeClasspath })
 }
 
 tasks.registerRunTask("runBundler") {
     description = "Spin up a test server from the Mojang mapped bundler jar"
+    jvmArgs("--enable-preview", "--add-modules=jdk.incubator.vector") // Fix #19: Vector API requires incubator module
     classpath(tasks.createBundlerJar.flatMap { it.outputZip })
     mainClass.set(null as String?)
 }

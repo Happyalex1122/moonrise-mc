@@ -42,6 +42,9 @@ public class DirectoryProviderSource implements ProviderSource<Path, List<Path>>
         this.walkFiles(context, path -> {
             try {
                 files.add(FILE_PROVIDER_SOURCE.prepareContext(path));
+            } catch (java.util.zip.ZipException e) {
+                // Fix #25: Empty or corrupt jar files throw ZipException; log and skip gracefully.
+                LOGGER.warn("Skipping invalid or empty plugin jar '{}': {}", path.getFileName(), e.getMessage());
             } catch (IllegalArgumentException ignored) {
                 // Ignore illegal argument exceptions from jar checking
             } catch (final Exception e) {
