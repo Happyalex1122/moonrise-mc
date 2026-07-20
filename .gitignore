@@ -59,3 +59,4 @@ test_server_run/
 *.dll
 *.jar
 badge.svg
+.agents/

@@ -48,8 +48,6 @@ public class MoonrisePluginUpdater {
             return;
         }
 
-        applyPendingUpdates();
-
         Thread updaterThread = new Thread(() -> {
             try {
                 File pluginsDir = new File("plugins");
@@ -108,7 +106,6 @@ public class MoonrisePluginUpdater {
             System.out.println("[Moonrise] Waiting for plugin auto-updater to finish... (-Dmoonrise.updater.sync=true)");
             try {
                 updaterThread.join();
-                applyPendingUpdates();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
@@ -469,45 +466,20 @@ public class MoonrisePluginUpdater {
 
     private static boolean downloadFile(String downloadUrl, String filename) {
         try {
-            File updateDir = new File("plugins/update");
+            File updateDir = new File("plugins/.moonrise/candidates");
             if (!updateDir.exists()) updateDir.mkdirs();
             File outputFile = new File(updateDir, filename);
-            URL url = new URL(downloadUrl);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestProperty("User-Agent", "Moonrise/1.0 (admin@moonrise.org)");
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(10000);
-
-            try (InputStream is = connection.getInputStream();
-                 FileOutputStream fos = new FileOutputStream(outputFile)) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = is.read(buffer)) != -1) fos.write(buffer, 0, bytesRead);
+            
+            boolean success = org.moonrise.updater.safev1.HttpTransport.downloadFile(downloadUrl, outputFile.toPath());
+            if (success) {
+                System.out.println(String.format(MoonriseLang.get("updater.downloaded"), filename));
+                return true;
+            } else {
+                return false;
             }
-            System.out.println(String.format(MoonriseLang.get("updater.downloaded"), filename));
-            return true;
         } catch (Exception e) {
             System.err.println(String.format(MoonriseLang.get("updater.failed"), filename, e.getMessage()));
             return false;
-        }
-    }
-
-    public static void applyPendingUpdates() {
-        File updateDir = new File("plugins/update");
-        if (!updateDir.exists() || !updateDir.isDirectory()) return;
-        File pluginsDir = new File("plugins");
-        File[] pending = updateDir.listFiles((dir, name) -> name.endsWith(".jar"));
-        if (pending == null || pending.length == 0) return;
-
-        for (File p : pending) {
-            File dest = new File(pluginsDir, p.getName());
-            try {
-                java.nio.file.Files.copy(p.toPath(), dest.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-                p.delete();
-                System.out.println("[Moonrise] Applied pending update for: " + p.getName());
-            } catch (Exception e) {
-                System.err.println("[Moonrise] Failed to apply update for " + p.getName() + ": " + e.getMessage());
-            }
         }
     }
 }
