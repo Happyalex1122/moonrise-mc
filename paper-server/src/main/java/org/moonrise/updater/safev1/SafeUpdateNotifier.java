@@ -18,7 +18,9 @@ public class SafeUpdateNotifier {
             connection.setRequestProperty("Accept", "application/json");
             connection.setDoOutput(true);
 
-            String jsonInputString = "{\"content\": \"" + content.replace("\"", "\\\"").replace("\n", "\\n") + "\"}";
+            com.google.gson.JsonObject payload = new com.google.gson.JsonObject();
+            payload.addProperty("content", content);
+            String jsonInputString = new com.google.gson.Gson().toJson(payload);
 
             try (OutputStream os = connection.getOutputStream()) {
                 byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);

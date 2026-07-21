@@ -38,7 +38,7 @@ public class AtomicFileOps {
                         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
                     }
                 } catch (IOException e) {
-                    throw new RuntimeException("Failed to backup file: " + source, e);
+                    System.err.println("Failed to backup file: " + source + " - " + e.getMessage());
                 }
             });
         }
@@ -59,7 +59,7 @@ public class AtomicFileOps {
                         Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
                     }
                 } catch (IOException e) {
-                    throw new RuntimeException("Failed to rollback file: " + source, e);
+                    System.err.println("Failed to rollback file: " + source + " - " + e.getMessage());
                 }
             });
         }

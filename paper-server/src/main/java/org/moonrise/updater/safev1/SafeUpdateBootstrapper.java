@@ -29,7 +29,31 @@ public class SafeUpdateBootstrapper {
 
             UpdateManifest manifest = GSON.fromJson(Files.readString(manifestFile, StandardCharsets.UTF_8), UpdateManifest.class);
 
-            if (manifest.getCurrentState() == UpdateState.APPLYING) {
+            if (manifest.getCurrentState() == UpdateState.PENDING_APPROVAL) {
+                LOGGER.info("Applying pending updates...");
+                manifest.setCurrentState(UpdateState.APPLYING);
+                AtomicFileOps.atomicWriteJson(manifestFile, manifest);
+                
+                AtomicFileOps.performBackup(pluginsDir, workspace.getBackupsDir());
+                
+                if (Files.exists(workspace.getCandidatesDir())) {
+                    try (java.util.stream.Stream<Path> stream = Files.list(workspace.getCandidatesDir())) {
+                        stream.forEach(candidate -> {
+                            try {
+                                if (Files.isRegularFile(candidate) && candidate.getFileName().toString().endsWith(".jar")) {
+                                    Path target = pluginsDir.resolve(candidate.getFileName());
+                                    Files.copy(candidate, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                                }
+                            } catch (IOException e) {
+                                LOGGER.severe("Failed to apply candidate: " + candidate);
+                            }
+                        });
+                    }
+                }
+                
+                manifest.setCurrentState(UpdateState.AWAITING_HEALTH);
+                AtomicFileOps.atomicWriteJson(manifestFile, manifest);
+            } else if (manifest.getCurrentState() == UpdateState.APPLYING) {
                 LOGGER.warning("Crash detected during update application. Rolling back...");
                 AtomicFileOps.performRollback(workspace.getBackupsDir(), pluginsDir);
                 manifest.setCurrentState(UpdateState.RECOVERY_REQUIRED);

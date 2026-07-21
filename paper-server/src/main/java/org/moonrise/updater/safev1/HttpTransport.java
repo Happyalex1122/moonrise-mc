@@ -25,9 +25,11 @@ public class HttpTransport {
                     Files.createDirectories(targetFile.getParent());
                 }
                 
+                Path tempFile = targetFile.resolveSibling(targetFile.getFileName().toString() + ".tmp");
                 try (InputStream in = connection.getInputStream()) {
-                    Files.copy(in, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                    Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
                 }
+                Files.move(tempFile, targetFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
                 return true;
             } else {
                 System.err.println("[Moonrise] Failed to download file from " + urlStr + ". HTTP response code: " + responseCode);
