@@ -60,3 +60,6 @@ test_server_run/
 *.jar
 badge.svg
 .agents/
+
+.gstack/
+diff.txt
